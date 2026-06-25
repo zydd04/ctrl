@@ -80,8 +80,11 @@ std::string genAPIK(size_t length = 28) {
     return key;
 }
 
-int main() {
+//function starting server
 
+int main() {
+	
+	int serv = 0;
 	int png = 0;
 	int qr = 0;
 	int choice = 0;
@@ -114,7 +117,11 @@ int main() {
 	else {
 		std::cout << "Okay!";
 	}
-
+	std::cout << "Do you Wanna Start the Server? Yes[1] No[2]: ";
+	std::cin >> serv;
+	if (serv == 1) {
+		std::cout << "Starting Server..." << "\n";
+	}
 	std::cout << "\nPress Enter to exit...";
     	std::cin.ignore(); 
     	std::cin.get();
