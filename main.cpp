@@ -19,8 +19,18 @@ std::string genAPIK(size_t length = 28) {
 }
 
 int main() {
+
+	int choice;
+
 	std::cout << "Welcome to the CLI CTRLai App!" << "\n" ;
-	std::cout << "Your Generated API Key: " << genAPIK() << "\n";
+	std::cout << "Generate API Key? Yes[1] No[0]";
+	std::cin >> choice;
+	if (choice == 1) {
+		std::cout << "Your Generated API Key: " << genAPIK() << "\n";
+	}
+	else {
+		std::cout << "Bye!";
+	}
 	return 0;
 }
 
