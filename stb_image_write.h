@@ -796,7 +796,7 @@ STBIWDEF int stbi_write_hdr(char const *filename, int x, int y, int comp, const 
    stbi__write_context s = { 0 };
    if (stbi__start_write_file(&s,filename)) {
       int r = stbi_write_hdr_core(&s, x, y, comp, (float *) data);
-[O      stbi__end_write_file(&s);
+      stbi__end_write_file(&s);
       return r;
    } else
       return 0;
@@ -1670,7 +1670,7 @@ STBIWDEF int stbi_write_jpg(char const *filename, int x, int y, int comp, const 
              fix monochrome BMP
       0.95 (2014-08-17)
              add monochrome TGA output
-[I      0.94 (2014-05-31)
+      0.94 (2014-05-31)
              rename private functions to avoid conflicts with stb_image.h
       0.93 (2014-05-27)
              warning fixes
