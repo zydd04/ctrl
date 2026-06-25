@@ -5,9 +5,115 @@
 #include <string>
 #include <random>
 #include <vector>
+#include <thread>
+#include <chrono>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include "qrcodegen.hpp"
 
 using qrcodegen::QrCode;
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define PORT "1935"
+#define BUFFER_SIZE 4096
+
+// Function to handle incoming data from the mobile streaming app
+void processMobileStream(SOCKET clientSocket) {
+    std::cout << "\n[Server] Mobile client connected successfully!\n";
+    std::vector<char> buffer(BUFFER_SIZE);
+    int bytesReceived = 0;
+
+    // Loop to read incoming video/audio data streams
+    do {
+        bytesReceived = recv(clientSocket, buffer.data(), BUFFER_SIZE, 0);
+        if (bytesReceived > 0) {
+            // In a complete media server, you pass this data packet 
+            // to a demuxer/decoder like FFmpeg here.
+            std::cout << "[Server] Receiving " << bytesReceived << " bytes of stream packets...\n";
+        } else if (bytesReceived == 0) {
+            std::cout << "[Server] Connection closing...\n";
+        } else {
+            std::cerr << "[Server] recv failed with error: " << WSAGetLastError() << "\n";
+            break;
+        }
+    } while (bytesReceived > 0);
+
+    closesocket(clientSocket);
+    std::cout << "[Server] Client disconnected.\n";
+}
+// Function to initialize and run the Windows streaming server
+void startStreamingServer() {
+    WSADATA wsaData;
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (result != 0) {
+        std::cerr << "WSAStartup failed with error: " << result << "\n";
+        return;
+    }
+
+    struct addrinfo* addrResult = NULL;
+    struct addrinfo hints;
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_PASSIVE;
+
+    result = getaddrinfo(NULL, PORT, &hints, &addrResult);
+    if (result != 0) {
+        std::cerr << "getaddrinfo failed with error: " << result << "\n";
+        WSACleanup();
+        return;
+    }
+
+    SOCKET listenSocket = socket(addrResult->ai_family, addrResult->ai_socktype, addrResult->ai_protocol);
+    if (listenSocket == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed with error: " << WSAGetLastError() << "\n";
+        freeaddrinfo(addrResult);
+        WSACleanup();
+        return;
+    }
+
+    result = bind(listenSocket, addrResult->ai_addr, (int)addrResult->ai_addrlen);
+    if (result == SOCKET_ERROR) {
+        std::cerr << "Bind failed with error: " << WSAGetLastError() << "\n";
+        freeaddrinfo(addrResult);
+        closesocket(listenSocket);
+        WSACleanup();
+        return;
+    }
+
+    freeaddrinfo(addrResult);
+
+    result = listen(listenSocket, SOMAXCONN);
+    if (result == SOCKET_ERROR) {
+        std::cerr << "Listen failed with error: " << WSAGetLastError() << "\n";
+        closesocket(listenSocket);
+        WSACleanup();
+        return;
+    }
+
+    std::cout << "\n[Server] Live streaming server listening on port " << PORT << "...\n";
+
+    // Basic server loop to accept connections
+    while (true) {
+        SOCKET clientSocket = accept(listenSocket, NULL, NULL);
+        if (clientSocket == INVALID_SOCKET) {
+            std::cerr << "Accept failed with error: " << WSAGetLastError() << "\n";
+            continue;
+        }
+
+        // Spin up a new background thread for each streaming connection
+        std::thread(processMobileStream, clientSocket).detach();
+    }
+
+    closesocket(listenSocket);
+    WSACleanup();
+}
 
 //function to generate qrcode. Credits: nayuki
 void genQr(const std::string& text) {
@@ -95,18 +201,11 @@ int main() {
 	if (choice == 1) {
 		std::cout << "Your Generated API Key: " << Key << "\n";
 	}
-	else {
-		std::cout << "Okay!" << "\n";
-	}
 	std::cout << "Generate Qr Code? Yes[1] No[0]: ";
 	std::cin >> qr;
 	if (qr == 1) {
 		std::cout << "Your Generated Qr Code: " << "\n";
 		genQr(Key);
-	}
-
-	else {
-		std::cout << "Okay!";
 	}
 	std::cout << "Save Qr Code As PNG? Yes[1] No[0]: ";
 	std::cin >> png;
@@ -114,13 +213,13 @@ int main() {
 		std::cout << "PNG image 'qrcode.png' Saved in working dir." << "\n";
 		saveQrCodeToPng(Key, "qrcode.png", 8);
 	}
-	else {
-		std::cout << "Okay!";
-	}
-	std::cout << "Do you Wanna Start the Server? Yes[1] No[2]: ";
+	std::cout << "Do you Wanna Start the Server? Yes[1] No[0]: ";
 	std::cin >> serv;
 	if (serv == 1) {
 		std::cout << "Starting Server..." << "\n";
+        std::thread serverThread(startStreamingServer);
+        serverThread.detach();
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
 	}
 	std::cout << "\nPress Enter to exit...";
     	std::cin.ignore(); 
