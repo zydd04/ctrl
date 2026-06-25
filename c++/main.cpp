@@ -23,18 +23,41 @@ using qrcodegen::QrCode;
 #define BUFFER_SIZE 4096
 
 // Function to handle incoming data from the mobile streaming app
-void processMobileStream(SOCKET clientSocket) {
-    std::cout << "\n[Server] Mobile client connected successfully!\n";
+void processMobileStream(SOCKET clientSocket, std::string expectedKey) {
+    std::cout << "\n[Server] Client connected. Verifying API Key...\n";
     std::vector<char> buffer(BUFFER_SIZE);
-    int bytesReceived = 0;
+    
+    int bytesReceived = recv(clientSocket, buffer.data(), BUFFER_SIZE - 1, 0);
+    if (bytesReceived <= 0) {
+        std::cerr << "[Server] Failed to receive API Key.\n";
+        closesocket(clientSocket);
+        return;
+    }
+
+    buffer[bytesReceived] = '\0'; 
+    std::string receivedData(buffer.data());
+    
+    // API KEY IMPLEMENTATION FOR SECURITY
+    if (receivedData.find(expectedKey) == std::string::npos) {
+        std::cerr << "[Server] AUTHENTICATION FAILED: Invalid API Key.\n";
+        
+        std::string errorMsg = "ERROR: Unauthorized API Key\n";
+        send(clientSocket, errorMsg.c_str(), (int)errorMsg.length(), 0);
+        
+        closesocket(clientSocket);
+        return;
+    }
+
+    std::cout << "[Server] AUTHENTICATION SUCCESSFUL! Stream authorized.\n";
+
+    std::string successMsg = "AUTH_OK\n";
+    send(clientSocket, successMsg.c_str(), (int)successMsg.length(), 0);
 
     // Loop to read incoming video/audio data streams
     do {
         bytesReceived = recv(clientSocket, buffer.data(), BUFFER_SIZE, 0);
         if (bytesReceived > 0) {
-            // In a complete media server, you pass this data packet 
-            // to a demuxer/decoder like FFmpeg here.
-            std::cout << "[Server] Receiving " << bytesReceived << " bytes of stream packets...\n";
+            std::cout << "[Server] Receiving " << bytesReceived << " bytes of authenticated stream packets...\n";
         } else if (bytesReceived == 0) {
             std::cout << "[Server] Connection closing...\n";
         } else {
@@ -46,8 +69,9 @@ void processMobileStream(SOCKET clientSocket) {
     closesocket(clientSocket);
     std::cout << "[Server] Client disconnected.\n";
 }
-// Function to initialize and run the Windows streaming server
-void startStreamingServer() {
+
+// FIXED: Added 'expectedKey' parameter so the function has access to the generated key
+void startStreamingServer(std::string expectedKey) {
     WSADATA wsaData;
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (result != 0) {
@@ -107,8 +131,8 @@ void startStreamingServer() {
             continue;
         }
 
-        // Spin up a new background thread for each streaming connection
-        std::thread(processMobileStream, clientSocket).detach();
+        // FIXED: Passed 'expectedKey' directly into the thread dispatcher loop
+        std::thread(processMobileStream, clientSocket, expectedKey).detach();
     }
 
     closesocket(listenSocket);
@@ -186,10 +210,7 @@ std::string genAPIK(size_t length = 28) {
     return key;
 }
 
-//function starting server
-
 int main() {
-	
 	int serv = 0;
 	int png = 0;
 	int qr = 0;
@@ -217,14 +238,14 @@ int main() {
 	std::cin >> serv;
 	if (serv == 1) {
 		std::cout << "Starting Server..." << "\n";
-        std::thread serverThread(startStreamingServer);
+        // FIXED: Passed the generated 'Key' into the server initialization routine
+        std::thread serverThread(startStreamingServer, Key);
         serverThread.detach();
         std::this_thread::sleep_for(std::chrono::milliseconds(600));
 	}
 	std::cout << "\nPress Enter to exit...";
-    	std::cin.ignore(); 
-    	std::cin.get();
+    std::cin.ignore(); 
+    std::cin.get();
 	
 	return 0;
 }
-
