@@ -28,14 +28,32 @@ using qrcodegen::QrCode;
 SOCKET globalPythonSocket = INVALID_SOCKET;
 std::mutex pythonSocketMutex;
 
+// Loops until the entire buffer is actually transmitted (send() can partial-write)
+bool sendAll(SOCKET sock, const char* data, int length) {
+    int totalSent = 0;
+    while (totalSent < length) {
+        int sent = send(sock, data + totalSent, length - totalSent, 0);
+        if (sent == SOCKET_ERROR || sent == 0) {
+            return false; // connection broken
+        }
+        totalSent += sent;
+    }
+    return true;
+}
+
 // Function to safely broadcast a video frame chunk to Python
 void forwardFrameToPython(const char* data, int length) {
     std::lock_guard<std::mutex> lock(pythonSocketMutex);
     if (globalPythonSocket != INVALID_SOCKET) {
         // First send 4 bytes indicating total length of the upcoming frame
-        send(globalPythonSocket, reinterpret_cast<const char*>(&length), 4, 0);
         // Then send the frame payload bytes
-        send(globalPythonSocket, data, length, 0);
+        // (sendAll guarantees full delivery, since a single send() call can partial-write)
+        if (!sendAll(globalPythonSocket, reinterpret_cast<const char*>(&length), 4) ||
+            !sendAll(globalPythonSocket, data, length)) {
+            std::cerr << "[Router] Send to Python failed, dropping connection.\n";
+            closesocket(globalPythonSocket);
+            globalPythonSocket = INVALID_SOCKET;
+        }
     }
 }
 
@@ -100,6 +118,15 @@ void processMobileStream(SOCKET clientSocket, std::string expectedKey) {
 
     std::vector<char> frameAccumulator;
 
+    // Preserve any bytes received alongside the API key that belong to the first frame
+    // (the phone can start writing frame bytes before AUTH_OK is even read back)
+    size_t keyEnd = receivedData.find('\n');
+    if (keyEnd != std::string::npos && (int)(keyEnd + 1) < bytesReceived) {
+        frameAccumulator.insert(frameAccumulator.end(),
+                                 buffer.begin() + keyEnd + 1,
+                                 buffer.begin() + bytesReceived);
+    }
+
     // Read loop to accumulate and parse individual frame streams
     while (true) {
         bytesReceived = recv(clientSocket, buffer.data(), BUFFER_SIZE, 0);
@@ -112,9 +139,20 @@ void processMobileStream(SOCKET clientSocket, std::string expectedKey) {
         // Mobile phone pushes images ending with 0xFF 0xD9 (JPEG EOF Marker)
         if (frameAccumulator.size() > 4) {
             size_t size = frameAccumulator.size();
-            if ((unsigned char)frameAccumulator[size - 2] == 0xFF && (unsigned char)frameAccumulator[size - 1] == 0xD9) {
-                // Forward the perfect reconstructed frame down the pipe to Python
-                forwardFrameToPython(frameAccumulator.data(), (int)frameAccumulator.size());
+            bool hasEOI = (unsigned char)frameAccumulator[size - 2] == 0xFF &&
+                          (unsigned char)frameAccumulator[size - 1] == 0xD9;
+
+            if (hasEOI) {
+                // Guard against a desynced accumulator being forwarded as a "frame"
+                bool hasSOI = (unsigned char)frameAccumulator[0] == 0xFF &&
+                              (unsigned char)frameAccumulator[1] == 0xD8;
+
+                if (hasSOI) {
+                    // Forward the perfect reconstructed frame down the pipe to Python
+                    forwardFrameToPython(frameAccumulator.data(), (int)frameAccumulator.size());
+                } else {
+                    std::cerr << "[Server] Discarded malformed frame (no SOI marker).\n";
+                }
                 frameAccumulator.clear(); // Wipe buffer for next coming image frame
             }
         }
