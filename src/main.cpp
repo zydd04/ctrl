@@ -188,11 +188,8 @@ void StartStreamTest() {
         double minVal, maxVal;
         cv::Point minLoc, maxLoc;
         cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
-        // Draw rectangle if confidence is high enough
-        HWND hwnd = FindWindowA(NULL,"Untitled - Notepad");
+        // rectangle
         if (maxVal > 0.5) {
-            SetForegroundWindow(hwnd);
-            PressKey('x');
             cv::rectangle(frame,
                           maxLoc,
                           cv::Point(maxLoc.x + obj.cols, maxLoc.y + obj.rows),
