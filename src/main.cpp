@@ -6,6 +6,7 @@ const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
 const int STOP_MENU = 5;
 const int RUN = 6;
+const int TEST = 7;
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM); //forward declaratio
 void AddMenu(HWND);
@@ -15,8 +16,9 @@ HMENU hMenu; //menu handler
 void AddControl(HWND);
 void ConnectWebcam();
 bool isConn = false;
-void StartStream();
-bool isStrm = false;
+void StartStreamTest();
+bool run = false;
+void Run();
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
 
@@ -60,13 +62,13 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
                 MessageBoxW(hWnd, L"Webcam Connected", L"Success", MB_OK | MB_ICONINFORMATION);
             }
             return 0;
+        case TEST:
+            StartStreamTest();
+            return 0;
         case RUN:
+        //fail safe
             if (!isConn) {
                 MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
-            }
-            else {
-                StartStream();
-                MessageBoxW(hWnd, L"Streaming on", L"Success", MB_OK | MB_ICONINFORMATION);
             }
             return 0;
         case STOP_MENU:
@@ -105,13 +107,15 @@ void AddMenu(HWND hWnd) {
     AppendMenuW(hMenu, MF_STRING, STOP_MENU, L"Stop");
     AppendMenuW(hMenu,MF_POPUP,HELP_MENU,L"Help");
     AppendMenuW(hMenu,MF_STRING,ABOUT_MENU,L"About");
+    AppendMenuW(hMenu,MF_POPUP,TEST,L"Test");
+
     //set menu to window
     SetMenu(hWnd, hMenu);
 }
 
 void AddControl(HWND hWnd) {
     CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
-    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 150, 40, 30, hWnd,(HMENU)RUN,0,0);
+    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 150, 40, 30, hWnd,(HMENU) RUN,0,0);
 }
 
 //check webcam connection
@@ -122,6 +126,26 @@ void ConnectWebcam() {
     }
     
 }
-void StartStream() {
-    isStrm = true;
+void StartStreamTest() {
+    cv::VideoCapture capture(0);
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 1200);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 700);
+    cv:: Mat frame;
+    //infinite loop stream
+    while(true){
+        capture >> frame;
+        cv::imshow("Live Stream Test", frame);
+        if (frame.empty()) {
+            break;
+        }
+        char key = (char)cv::waitKey(10);
+        if (key == 27 || key == 'q' || key == 'Q') {
+            capture.release();
+            cv::destroyAllWindows();
+            break;
+        }
+    }
+}
+void Run(){
+    run = true;
 }
