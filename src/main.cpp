@@ -5,8 +5,8 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include <chrono>
 #include <algorithm>
-
-
+#include <iostream>
+#include <thread>
 const int CONNECT_MENU = 1;
 const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
@@ -80,8 +80,12 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (!isConn) {
                 MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
             }
+            else{
+                std::thread(Run).detach();
+            }
             return 0;
         case STOP_MENU:
+            run = false;
             DestroyWindow(hWnd);
             return 0;
         case HELP_MENU:
@@ -136,9 +140,23 @@ void ConnectWebcam() {
     }
     
 }
+//keyboard input 
+void PressKey(WORD wVk) {
+    INPUT inputs[2] = {};
+
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = wVk;
+
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = wVk;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    SendInput(2, inputs, sizeof(INPUT));
+}
+
 void StartStreamTest() {
     cv::Mat frame;
-    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/closed.png");
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
     cv::VideoCapture capture(0);
     capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
     capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
@@ -171,7 +189,10 @@ void StartStreamTest() {
         cv::Point minLoc, maxLoc;
         cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
         // Draw rectangle if confidence is high enough
+        HWND hwnd = FindWindowA(NULL,"Untitled - Notepad");
         if (maxVal > 0.5) {
+            SetForegroundWindow(hwnd);
+            PressKey('x');
             cv::rectangle(frame,
                           maxLoc,
                           cv::Point(maxLoc.x + obj.cols, maxLoc.y + obj.rows),
@@ -190,6 +211,41 @@ void StartStreamTest() {
         }
     }
 }
-void Run(){
+void Run(){ //run no imshow
+    cv::Mat frame;
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
+    if (obj.empty())
+        return;
+    cv::VideoCapture capture(0);
+    if (!capture.isOpened())
+        return;
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
+    cv::Mat grayObj;
+    cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
+    auto lastPress = std::chrono::steady_clock::now();
     run = true;
+    while (run){
+        capture >> frame;
+        if (frame.empty())
+            continue;
+        cv::Mat grayFrame;
+        cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+        cv::Mat result;
+        cv::matchTemplate(grayFrame, grayObj, result, cv::TM_CCOEFF_NORMED);
+        double minVal, maxVal;
+        cv::Point minLoc, maxLoc;
+        cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+        if (maxVal > 0.5)
+        {
+            auto now = std::chrono::steady_clock::now();
+            //no spam
+            if (now - lastPress > std::chrono::milliseconds(300))
+            {
+                PressKey(VK_SPACE);
+                lastPress = now;
+            }
+        }
+    }
+    capture.release();
 }
