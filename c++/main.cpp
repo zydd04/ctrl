@@ -2,16 +2,20 @@
 
 const int CONNECT_MENU = 1;
 const int HELP_MENU_HOW = 2;
-const int HELP_MENU_FAQ = 3;
 const int ABOUT_MENU = 4;
 const int STOP_MENU = 5;
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM); //forward declaratio
 void AddMenu(HWND);
+
 HMENU hMenu; //menu handler
 HMENU hDropMenu;
+HWND hCtrl1 = NULL;
+HWND hCtrl2 = NULL;
+HWND hCtrl3 = NULL;
 
 void AddControl(HWND);
+
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
 
     WNDCLASSW wc = {0}; //aloc memory
@@ -46,16 +50,19 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
         switch (wp)
         {
         case CONNECT_MENU:
-            // backend implementation needed
+            //show original screen
+            AddControl(hWnd);
             return 0;
         case STOP_MENU:
-            // backend implementation needed
+            DestroyWindow(hWnd);
             return 0;
         case HELP_MENU_HOW:
-            return 0;
-        case HELP_MENU_FAQ:
+            MessageBoxW(hWnd, 
+                L"1. Select your webcam hardware.\n2. Click 'Connect' in the menu.\n3. Click 'Run' to start streaming.", 
+                L"How it Works", MB_ICONINFORMATION);//message boc 
             return 0;
         case ABOUT_MENU:
+            MessageBoxW(hWnd,L"This Was Developed as fun learning peoject.\nGithub: @Zydd04",L"About",MB_ICONINFORMATION);
             return 0;
         default:
             break;
@@ -71,7 +78,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
     default:
         return DefWindowProcW(hWnd, msg, wp, lp);
     }
-
+    return DefWindowProcW(hWnd, msg, wp, lp);
 }
 
 void AddMenu(HWND hWnd) {
@@ -85,13 +92,27 @@ void AddMenu(HWND hWnd) {
     AppendMenuW(hMenu,MF_STRING,ABOUT_MENU,L"About");
     //Drop menu components
     AppendMenuW(hDropMenu, MF_STRING,HELP_MENU_HOW, L"How it Works?");
-    AppendMenuW(hDropMenu, MF_STRING,HELP_MENU_FAQ, L"FAQ");
     //set menu to window
     SetMenu(hWnd, hMenu);
 }
 
 void AddControl(HWND hWnd) {
-    CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
-    CreateWindowW(L"Static", L"Select WebCam:", WS_VISIBLE | WS_CHILD, 350, 100, 300, 50, hWnd,0,0,0);//text static
-    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 250, 40, 30, hWnd,0,0,0);
+    hCtrl1 = CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
+    hCtrl2 = CreateWindowW(L"Static", L"Select WebCam:", WS_VISIBLE | WS_CHILD, 350, 100, 300, 50, hWnd,0,0,0);//text static
+    hCtrl3 = CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 250, 40, 30, hWnd,0,0,0);
+}
+
+void ClearWindow() {
+    if (hCtrl1) {
+        DestroyWindow(hCtrl1);
+        hCtrl1 = NULL;
+    }//Destroy text1
+    if (hCtrl2) {
+        DestroyWindow(hCtrl2);
+        hCtrl2 = NULL;
+    }//Remove text 2
+    if (hCtrl3) {
+        DestroyWindow(hCtrl3);
+        hCtrl3 = NULL;
+    }//remove button
 }
