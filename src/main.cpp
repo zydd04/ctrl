@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <opencv2/opencv.hpp>
 
 const int CONNECT_MENU = 1;
 const int HELP_MENU = 2;
