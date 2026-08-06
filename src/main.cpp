@@ -16,6 +16,7 @@ void AddControl(HWND);
 void ConnectWebcam();
 bool isConn = false;
 void StartStream();
+bool isStrm = false;
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
 
@@ -51,6 +52,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
         switch (wp)
         {
         case CONNECT_MENU:
+            ConnectWebcam();
             if (!isConn) {
                 MessageBoxW(hWnd, L"Failed to connect webcam", L"Error", MB_OK | MB_ICONERROR);
             }
@@ -59,7 +61,13 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case RUN:
-            StartStream();
+            if (!isConn) {
+                MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
+            }
+            else {
+                StartStream();
+                MessageBoxW(hWnd, L"Streaming on", L"Success", MB_OK | MB_ICONINFORMATION);
+            }
             return 0;
         case STOP_MENU:
             DestroyWindow(hWnd);
@@ -109,4 +117,7 @@ void AddControl(HWND hWnd) {
 //check webcam connection
 void ConnectWebcam() {
     isConn = true;
+}
+void StartStream() {
+    isStrm = true;
 }

@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.10)
+project(ctrl)
+set(OpenCV_DIR "C:/Users/ziyad/Downloads/opencv/build/x64/vc16/lib")
+find_package(OpenCV REQUIRED)
+add_executable(${PROJECT_NAME} WIN32 src/main.cpp)
+target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
