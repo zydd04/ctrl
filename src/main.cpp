@@ -12,7 +12,6 @@ void AddMenu(HWND);
 
 HMENU hMenu; //menu handler
 
-
 void AddControl(HWND);
 void ConnectWebcam();
 bool isConn = false;
@@ -117,7 +116,11 @@ void AddControl(HWND hWnd) {
 
 //check webcam connection
 void ConnectWebcam() {
-    isConn = true;
+    cv::VideoCapture capture(0);//opencv
+    if (capture.isOpened()){
+        isConn = true;//webcam opened
+    }
+    
 }
 void StartStream() {
     isStrm = true;
