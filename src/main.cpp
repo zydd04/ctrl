@@ -1,20 +1,23 @@
 #include <Windows.h>
+#include <opencv2/opencv.hpp>
 
 const int CONNECT_MENU = 1;
-const int HELP_MENU_HOW = 2;
+const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
 const int STOP_MENU = 5;
+const int RUN = 6;
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM); //forward declaratio
 void AddMenu(HWND);
 
 HMENU hMenu; //menu handler
-HMENU hDropMenu;
-HWND hCtrl1 = NULL;
-HWND hCtrl2 = NULL;
-HWND hCtrl3 = NULL;
+
 
 void AddControl(HWND);
+void ConnectWebcam();
+bool isConn = false;
+void StartStream();
+bool isStrm = false;
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
 
@@ -50,19 +53,33 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
         switch (wp)
         {
         case CONNECT_MENU:
-            //show original screen
-            AddControl(hWnd);
+            ConnectWebcam();
+            if (!isConn) {
+                MessageBoxW(hWnd, L"Failed to connect webcam", L"Error", MB_OK | MB_ICONERROR);
+            }
+            else {
+                MessageBoxW(hWnd, L"Webcam Connected", L"Success", MB_OK | MB_ICONINFORMATION);
+            }
+            return 0;
+        case RUN:
+            if (!isConn) {
+                MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
+            }
+            else {
+                StartStream();
+                MessageBoxW(hWnd, L"Streaming on", L"Success", MB_OK | MB_ICONINFORMATION);
+            }
             return 0;
         case STOP_MENU:
             DestroyWindow(hWnd);
             return 0;
-        case HELP_MENU_HOW:
+        case HELP_MENU:
             MessageBoxW(hWnd, 
-                L"1. Select your webcam hardware.\n2. Click 'Connect' in the menu.\n3. Click 'Run' to start streaming.", 
+                L"1. You need a webcam for this.\n2. Click 'Connect' in the menu.\n3. Click 'Run' to start streaming and run the program.", 
                 L"How it Works", MB_ICONINFORMATION);//message boc 
             return 0;
         case ABOUT_MENU:
-            MessageBoxW(hWnd,L"This Was Developed as fun learning peoject.\nGithub: @Zydd04",L"About",MB_ICONINFORMATION);
+            MessageBoxW(hWnd,L"This Was Developed as fun learning peoject.\n                Github: @Zydd04",L"About",MB_ICONINFORMATION);
             return 0;
         default:
             break;
@@ -83,36 +100,25 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 void AddMenu(HWND hWnd) {
     hMenu = CreateMenu();
-    hDropMenu = CreateMenu(); //Drop dowm menu
 
     //menu components
     AppendMenuW(hMenu,MF_STRING,CONNECT_MENU,L"Connect");
     AppendMenuW(hMenu, MF_STRING, STOP_MENU, L"Stop");
-    AppendMenuW(hMenu,MF_POPUP,(UINT_PTR)hDropMenu,L"Help");
+    AppendMenuW(hMenu,MF_POPUP,HELP_MENU,L"Help");
     AppendMenuW(hMenu,MF_STRING,ABOUT_MENU,L"About");
-    //Drop menu components
-    AppendMenuW(hDropMenu, MF_STRING,HELP_MENU_HOW, L"How it Works?");
     //set menu to window
     SetMenu(hWnd, hMenu);
 }
 
 void AddControl(HWND hWnd) {
-    hCtrl1 = CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
-    hCtrl2 = CreateWindowW(L"Static", L"Select WebCam:", WS_VISIBLE | WS_CHILD, 350, 100, 300, 50, hWnd,0,0,0);//text static
-    hCtrl3 = CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 250, 40, 30, hWnd,0,0,0);
+    CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
+    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 150, 40, 30, hWnd,(HMENU)RUN,0,0);
 }
 
-void ClearWindow() {
-    if (hCtrl1) {
-        DestroyWindow(hCtrl1);
-        hCtrl1 = NULL;
-    }//Destroy text1
-    if (hCtrl2) {
-        DestroyWindow(hCtrl2);
-        hCtrl2 = NULL;
-    }//Remove text 2
-    if (hCtrl3) {
-        DestroyWindow(hCtrl3);
-        hCtrl3 = NULL;
-    }//remove button
+//check webcam connection
+void ConnectWebcam() {
+    isConn = true;
+}
+void StartStream() {
+    isStrm = true;
 }
