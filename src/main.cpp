@@ -1,23 +1,28 @@
 #include <Windows.h>
 #include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
+#include <chrono>
+#include <algorithm>
+#include <string>
 
 const int CONNECT_MENU = 1;
 const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
 const int STOP_MENU = 5;
 const int RUN = 6;
+const int TEST = 7;
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM); //forward declaratio
 void AddMenu(HWND);
 
 HMENU hMenu; //menu handler
 
-
 void AddControl(HWND);
 void ConnectWebcam();
 bool isConn = false;
-void StartStream();
-bool isStrm = false;
+void StartStreamTest();
+bool run = false;
+void Run();
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
 
@@ -61,13 +66,13 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
                 MessageBoxW(hWnd, L"Webcam Connected", L"Success", MB_OK | MB_ICONINFORMATION);
             }
             return 0;
+        case TEST:
+            StartStreamTest();
+            return 0;
         case RUN:
+        //fail safe
             if (!isConn) {
                 MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
-            }
-            else {
-                StartStream();
-                MessageBoxW(hWnd, L"Streaming on", L"Success", MB_OK | MB_ICONINFORMATION);
             }
             return 0;
         case STOP_MENU:
@@ -106,19 +111,62 @@ void AddMenu(HWND hWnd) {
     AppendMenuW(hMenu, MF_STRING, STOP_MENU, L"Stop");
     AppendMenuW(hMenu,MF_POPUP,HELP_MENU,L"Help");
     AppendMenuW(hMenu,MF_STRING,ABOUT_MENU,L"About");
+    AppendMenuW(hMenu,MF_POPUP,TEST,L"Test");
+
     //set menu to window
     SetMenu(hWnd, hMenu);
 }
 
 void AddControl(HWND hWnd) {
     CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
-    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 150, 40, 30, hWnd,(HMENU)RUN,0,0);
+    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 150, 40, 30, hWnd,(HMENU) RUN,0,0);
 }
 
 //check webcam connection
 void ConnectWebcam() {
-    isConn = true;
+    cv::VideoCapture capture(0);//opencv
+    if (capture.isOpened()){
+        isConn = true;//webcam opened
+    }
+    
 }
-void StartStream() {
-    isStrm = true;
+void StartStreamTest() {
+    cv::VideoCapture capture(0);
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 800);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 800);
+    //person detection
+    cv:: Mat frame;
+    cv:: Mat result;
+    //start clock
+    auto last = std::chrono::high_resolution_clock::now();
+    //infinite loop stream
+    while(true){
+        capture >> frame;
+        if (frame.empty()) {
+            break;
+        }
+        //fps
+        auto current_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = current_time - last; //frame time
+        last = current_time; //replace last with curr
+        double elapsed_seconds = std::max(elapsed.count(), 1e-4);
+        double fps = 1.0 / elapsed_seconds; //convert to fps
+        std::string fps_txt = std::to_string(static_cast<int>(fps));
+        cv::putText(frame, fps_txt, cv::Point(50, 50), 
+            cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(250,250,250), 2);//put text
+        //detector
+        
+        //draw rectangle
+        
+        cv::imshow("Live Stream Test", frame);
+        char key = (char)cv::waitKey(10);
+        if (key == 27 || key == 'q' || key == 'Q') {
+            capture.release();
+            cv::destroyAllWindows();
+            break;
+        }
+    }
+}
+void Run(){
+    run = true;
 }
