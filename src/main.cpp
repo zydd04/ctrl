@@ -4,6 +4,7 @@
 #include <chrono>
 #include <algorithm>
 #include <string>
+
 const int CONNECT_MENU = 1;
 const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
@@ -130,22 +131,20 @@ void ConnectWebcam() {
     
 }
 void StartStreamTest() {
-    //model:
-    
     cv::VideoCapture capture(0);
-    capture.set(cv::CAP_PROP_FRAME_WIDTH, 1200);
-    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 700);
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 800);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 800);
+    //person detection
     cv:: Mat frame;
+    cv:: Mat result;
     //start clock
     auto last = std::chrono::high_resolution_clock::now();
     //infinite loop stream
     while(true){
         capture >> frame;
-
         if (frame.empty()) {
             break;
         }
-
         //fps
         auto current_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = current_time - last; //frame time
@@ -155,7 +154,10 @@ void StartStreamTest() {
         std::string fps_txt = std::to_string(static_cast<int>(fps));
         cv::putText(frame, fps_txt, cv::Point(50, 50), 
             cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(250,250,250), 2);//put text
-
+        //detector
+        
+        //draw rectangle
+        
         cv::imshow("Live Stream Test", frame);
         char key = (char)cv::waitKey(10);
         if (key == 27 || key == 'q' || key == 'Q') {
