@@ -1,6 +1,9 @@
 #include <Windows.h>
 #include <opencv2/opencv.hpp>
-
+#include <opencv2/dnn.hpp>
+#include <chrono>
+#include <algorithm>
+#include <string>
 const int CONNECT_MENU = 1;
 const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
@@ -127,17 +130,33 @@ void ConnectWebcam() {
     
 }
 void StartStreamTest() {
+    //model:
+    
     cv::VideoCapture capture(0);
     capture.set(cv::CAP_PROP_FRAME_WIDTH, 1200);
     capture.set(cv::CAP_PROP_FRAME_HEIGHT, 700);
     cv:: Mat frame;
+    //start clock
+    auto last = std::chrono::high_resolution_clock::now();
     //infinite loop stream
     while(true){
         capture >> frame;
-        cv::imshow("Live Stream Test", frame);
+
         if (frame.empty()) {
             break;
         }
+
+        //fps
+        auto current_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = current_time - last; //frame time
+        last = current_time; //replace last with curr
+        double elapsed_seconds = std::max(elapsed.count(), 1e-4);
+        double fps = 1.0 / elapsed_seconds; //convert to fps
+        std::string fps_txt = std::to_string(static_cast<int>(fps));
+        cv::putText(frame, fps_txt, cv::Point(50, 50), 
+            cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(250,250,250), 2);//put text
+
+        cv::imshow("Live Stream Test", frame);
         char key = (char)cv::waitKey(10);
         if (key == 27 || key == 'q' || key == 'Q') {
             capture.release();
