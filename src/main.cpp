@@ -1,16 +1,22 @@
 #include <Windows.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
 #include <chrono>
 #include <algorithm>
-#include <string>
-
+#include <iostream>
+#include <thread>
 const int CONNECT_MENU = 1;
 const int HELP_MENU = 2;
 const int ABOUT_MENU = 4;
 const int STOP_MENU = 5;
 const int RUN = 6;
 const int TEST = 7;
+const float THRESHOLD = 0.5;//threshold for detection
+const float NMS_THRESHOLD = 0.5;
+const cv::Size2f modelShape(cv::Size(640,640)); //size
+std::vector<std::string> mvmt_list; //[jump, run...]
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM); //forward declaratio
 void AddMenu(HWND);
@@ -74,8 +80,12 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (!isConn) {
                 MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
             }
+            else{
+                std::thread(Run).detach();
+            }
             return 0;
         case STOP_MENU:
+            run = false;
             DestroyWindow(hWnd);
             return 0;
         case HELP_MENU:
@@ -130,13 +140,26 @@ void ConnectWebcam() {
     }
     
 }
+//keyboard input 
+void PressKey(WORD wVk) {
+    INPUT inputs[2] = {};
+
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = wVk;
+
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = wVk;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    SendInput(2, inputs, sizeof(INPUT));
+}
+
 void StartStreamTest() {
+    cv::Mat frame;
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
     cv::VideoCapture capture(0);
-    capture.set(cv::CAP_PROP_FRAME_WIDTH, 800);
-    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 800);
-    //person detection
-    cv:: Mat frame;
-    cv:: Mat result;
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
     //start clock
     auto last = std::chrono::high_resolution_clock::now();
     //infinite loop stream
@@ -145,6 +168,7 @@ void StartStreamTest() {
         if (frame.empty()) {
             break;
         }
+        
         //fps
         auto current_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = current_time - last; //frame time
@@ -153,11 +177,28 @@ void StartStreamTest() {
         double fps = 1.0 / elapsed_seconds; //convert to fps
         std::string fps_txt = std::to_string(static_cast<int>(fps));
         cv::putText(frame, fps_txt, cv::Point(50, 50), 
-            cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(250,250,250), 2);//put text
-        //detector
-        
-        //draw rectangle
-        
+            cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(250,250,250), 1);//put text
+        //gray scale
+        cv::Mat grayFrame, grayObj;
+        cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
+        // Template matching
+        cv::Mat result;
+        cv::matchTemplate(grayFrame, grayObj, result, cv::TM_CCOEFF_NORMED);
+        double minVal, maxVal;
+        cv::Point minLoc, maxLoc;
+        cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+        // rectangle
+        if (maxVal > 0.5) {
+            cv::rectangle(frame,
+                          maxLoc,
+                          cv::Point(maxLoc.x + obj.cols, maxLoc.y + obj.rows),
+                          cv::Scalar(0, 255, 0),
+                          2);
+            cv::putText(frame, "jump", cv::Point(10, 45),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                        cv::Scalar(0, 255, 0), 2);
+        }
         cv::imshow("Live Stream Test", frame);
         char key = (char)cv::waitKey(10);
         if (key == 27 || key == 'q' || key == 'Q') {
@@ -167,6 +208,41 @@ void StartStreamTest() {
         }
     }
 }
-void Run(){
+void Run(){ //run no imshow
+    cv::Mat frame;
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
+    if (obj.empty())
+        return;
+    cv::VideoCapture capture(0);
+    if (!capture.isOpened())
+        return;
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
+    cv::Mat grayObj;
+    cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
+    auto lastPress = std::chrono::steady_clock::now();
     run = true;
+    while (run){
+        capture >> frame;
+        if (frame.empty())
+            continue;
+        cv::Mat grayFrame;
+        cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+        cv::Mat result;
+        cv::matchTemplate(grayFrame, grayObj, result, cv::TM_CCOEFF_NORMED);
+        double minVal, maxVal;
+        cv::Point minLoc, maxLoc;
+        cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+        if (maxVal > 0.5)
+        {
+            auto now = std::chrono::steady_clock::now();
+            //no spam
+            if (now - lastPress > std::chrono::milliseconds(300))
+            {
+                PressKey(VK_SPACE);
+                lastPress = now;
+            }
+        }
+    }
+    capture.release();
 }
