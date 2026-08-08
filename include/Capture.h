@@ -16,6 +16,7 @@ public:
 	bool GetFrame(cv::Mat& outFrame);
 
 private:
+	cv::VideoCapture capture_;
 	int frameWidth_;
 	int frameHeight_;
 	bool isConnected_ = false;

@@ -4,7 +4,7 @@
 #include <chrono>
 
 //Sends virtual key presses to the OS
-//Prevents spam using a cooldown using a hashmap that stores last time a key was pressed
+//Prevents spam using a cooldown 
  
 class InputController {
 public:
@@ -15,5 +15,5 @@ public:
 
 private:
 	std::chrono::milliseconds cooldown_;
-	std::chrono::milliseconds lastPress;
+	std::chrono::milliseconds lastPress_;
 };
