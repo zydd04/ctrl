@@ -11,7 +11,7 @@ public:
 	explicit InputController(std::chrono::milliseconds cooldown = std::chrono::milliseconds(300)); 
 
 	//Press and release key 
-	void PressKey(WORD vk) const;
+	void PressKey(WORD vk);
 
 private:
 	std::chrono::milliseconds cooldown_;
