@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(OpenCV_DIR "C:/Users/ziyad/Downloads/opencv/build/x64/vc16/lib")
 find_package(OpenCV REQUIRED)
-add_executable(${PROJECT_NAME} WIN32 src/main.cpp
+add_executable(${PROJECT_NAME} src/main.cpp
 		src/MainWindow.cpp
 		src/Detector.cpp
 		src/Capture.cpp

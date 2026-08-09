@@ -14,6 +14,5 @@ public:
 	void PressKey(WORD vk);
 
 private:
-	std::chrono::milliseconds cooldown_;
-	std::chrono::milliseconds lastPress_;
+	std::chrono::milliseconds cooldown;
 };

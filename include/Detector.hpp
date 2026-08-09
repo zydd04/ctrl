@@ -19,9 +19,10 @@ public:
 
 	//Outputs Fps counter for the Webcam capture
 	void DrawFps(cv::Mat& frame); 
+
 private:
-	std::unordred_map<std::vector<std::string>, WORD> gestureToKey_;
-	WORD keyPress_;
+	std::unordred_map<std::vector<std::string>, WORD> gestureToKey;
+	WORD keyPress;
 	int threshhold;
 
 };

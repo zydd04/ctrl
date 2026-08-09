@@ -5,21 +5,20 @@
 
 class Capture {
 public:
-	explicit Capture(int frameWidth = 200, int frameHeight = 200);
+	//Constructor
+	Capture(int frameWidth, int frameHeight);
 
 	//Checks if Webcam is connected/detected
-	bool ConnectWebcam(int device_i = 0);
-
-	bool IsConnected() const { return isConnected_; }
+	bool ConnectWebcam();
 
 	//Captures Frames, returns False if frames are interupted
-	bool GetFrame(cv::Mat& outFrame);
+	cv::Mat GetFrame();
 
 private:
-	cv::VideoCapture capture_;
-	int frameWidth_;
-	int frameHeight_;
-	bool isConnected_ = false;
+	cv::VideoCapture capture;
+	int frameW;
+	int frameH;
+	bool isConnected;
 };
 	
 	
