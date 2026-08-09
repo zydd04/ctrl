@@ -1,0 +1,24 @@
+#include "Capture.hpp"
+
+Capture::Capture(int frameWidth, int frameHeight) {
+	frameW = frameWidth;
+	frameH = frameHeight;
+	cv::VideoCapture capture(0);
+	isConnected = false;
+};
+
+void ConnectWebcam() {
+	if (capture.isOpened()) {
+		isConnected = true;
+	}
+}
+
+cv::Mat GetFrame() {
+	cv::Mat frame;
+	capture.set(cv::CAP_PROP_FRAME_WIDTH, frameW);
+	capture.set(cv::CAP_PROP_FRAME_HEIGHT, frameH);
+	capture >> frame;
+	return frame;
+}
+	
+
