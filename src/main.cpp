@@ -156,7 +156,7 @@ void PressKey(WORD wVk) {
 
 void StartStreamTest() {
     cv::Mat frame;
-    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/closed.png");
     cv::VideoCapture capture(0);
     capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
     capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
@@ -189,7 +189,7 @@ void StartStreamTest() {
         cv::Point minLoc, maxLoc;
         cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
         // rectangle
-        if (maxVal > 0.5) {
+        if (maxVal > 0.6) {
             cv::rectangle(frame,
                           maxLoc,
                           cv::Point(maxLoc.x + obj.cols, maxLoc.y + obj.rows),

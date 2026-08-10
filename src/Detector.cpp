@@ -1,13 +1,14 @@
 #include "Detector.hpp"
 
 //Constructor
-Detector::Detector(std::string path, double td) {
-    PathImg = path;
+Detector::Detector(std::unordered_map<std::string, WORD> gTk, double td) {
+    gestureToKey = gTk;
     treshhold = td;
 }
 
 //Detects hand gesture in the frame and returns a key to be pressed
 WORD Detector::Detect(cv::Mat& frame) {
+    std::string PathImg; // = gestureToKey[JUMP] example 
     cv::Mat obj = cv::imread(PathImg);
     cv::Mat grayObj;
     cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
@@ -19,7 +20,7 @@ WORD Detector::Detect(cv::Mat& frame) {
     cv::Point minLoc, maxLoc;
     cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
     if (maxVal > treshhold) {
-        return VK_SPACE;
+        return gestureToKey[PathImg]; //NEEDS IMPLEMENTATION : ALLOW MULTIPLE GESTURES DETECTION
     }
     return 0;
 }
