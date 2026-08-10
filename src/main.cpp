@@ -1,30 +1,248 @@
-#include <iostream>
+#include <Windows.h>
 #include <opencv2/opencv.hpp>
-#include "Capture.hpp"
-#include "Detector.hpp"
-#include "Input.hpp"
+#include <opencv2/dnn.hpp>
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include <chrono>
+#include <algorithm>
+#include <iostream>
+#include <thread>
+const int CONNECT_MENU = 1;
+const int HELP_MENU = 2;
+const int ABOUT_MENU = 4;
+const int STOP_MENU = 5;
+const int RUN = 6;
+const int TEST = 7;
+const float THRESHOLD = 0.5;//threshold for detection
+const float NMS_THRESHOLD = 0.5;
+const cv::Size2f modelShape(cv::Size(640,640)); //size
+std::vector<std::string> mvmt_list; //[jump, run...]
 
-int main() {
-	Capture cap = Capture(200, 200);
-	Detector Detector("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png", 0.9);
-	Input input;
+LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM); //forward declaratio
+void AddMenu(HWND);
 
-	while(true) {
-		cv::Mat frame = cap.GetFrame();
-		if (frame.empty()) {
-			std::cout << "Frame is Empty.\n";
-			continue;
-		}
-		WORD key = Detector.Detect(frame);
-		if (key != 0) {
-			input.PressKey(key);
-			std::cout << "Match, pressing space" << "\n";
-		}
-		cv::imshow("ctrl", frame);
-		if (cv::waitKey(1) == 27) {
-			break;  
-			cv::destroyAllWindows();
-		}
-	}
-	return 0;
+HMENU hMenu; //menu handler
+
+void AddControl(HWND);
+void ConnectWebcam();
+bool isConn = false;
+void StartStreamTest();
+bool run = false;
+void Run();
+
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR args, int ncmdshow) {
+
+    WNDCLASSW wc = {0}; //aloc memory
+
+    wc.hbrBackground = (HBRUSH) COLOR_WINDOW; //default background color
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW); //std arrow mouse
+    wc.hInstance = hInst; //instance of runing app
+    wc.lpszClassName = L"myWinClass";//unique text name
+    wc.lpfnWndProc = WindowProc;//event handler function
+    
+    if (!RegisterClassW(&wc)) { // register with os, if fail quit
+        return -1;
+    }
+
+    //create window
+    CreateWindowW(L"myWinClass", L"CTRLcv", WS_OVERLAPPEDWINDOW | WS_VISIBLE,100,100,800,400,NULL,NULL,NULL,NULL);
+    
+    MSG msg = {0};
+
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg); //raw keyboard signals to readble chars
+        DispatchMessage(&msg); //forward to windowProc
+    }
+    return 0;
+}
+
+LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
+
+    switch (msg) // look at msg ID
+    {
+    case WM_COMMAND: //user clicks handling -> WPARAM wp
+        switch (wp)
+        {
+        case CONNECT_MENU:
+            ConnectWebcam();
+            if (!isConn) {
+                MessageBoxW(hWnd, L"Failed to connect webcam", L"Error", MB_OK | MB_ICONERROR);
+            }
+            else {
+                MessageBoxW(hWnd, L"Webcam Connected", L"Success", MB_OK | MB_ICONINFORMATION);
+            }
+            return 0;
+        case TEST:
+            StartStreamTest();
+            return 0;
+        case RUN:
+        //fail safe
+            if (!isConn) {
+                MessageBoxW(hWnd, L"WebCam not Connected. Please Connect First", L"Error", MB_OK | MB_ICONERROR);
+            }
+            else{
+                std::thread(Run).detach();
+            }
+            return 0;
+        case STOP_MENU:
+            run = false;
+            DestroyWindow(hWnd);
+            return 0;
+        case HELP_MENU:
+            MessageBoxW(hWnd, 
+                L"1. You need a webcam for this.\n2. Click 'Connect' in the menu.\n3. Click 'Run' to start streaming and run the program.", 
+                L"How it Works", MB_ICONINFORMATION);//message boc 
+            return 0;
+        case ABOUT_MENU:
+            MessageBoxW(hWnd,L"This Was Developed as fun learning peoject.\n                Github: @Zydd04",L"About",MB_ICONINFORMATION);
+            return 0;
+        default:
+            break;
+        }
+    case WM_CREATE:
+        AddMenu(hWnd); //create menu when window is created and get hwnd
+        AddControl(hWnd); //add hwnd to func needed parent window
+        return 0;
+    case WM_DESTROY:
+        PostQuitMessage(0);//quit when x clicked 
+        return 0;
+    
+    default:
+        return DefWindowProcW(hWnd, msg, wp, lp);
+    }
+    return DefWindowProcW(hWnd, msg, wp, lp);
+}
+
+void AddMenu(HWND hWnd) {
+    hMenu = CreateMenu();
+
+    //menu components
+    AppendMenuW(hMenu,MF_STRING,CONNECT_MENU,L"Connect");
+    AppendMenuW(hMenu, MF_STRING, STOP_MENU, L"Stop");
+    AppendMenuW(hMenu,MF_POPUP,HELP_MENU,L"Help");
+    AppendMenuW(hMenu,MF_STRING,ABOUT_MENU,L"About");
+    AppendMenuW(hMenu,MF_POPUP,TEST,L"Test");
+
+    //set menu to window
+    SetMenu(hWnd, hMenu);
+}
+
+void AddControl(HWND hWnd) {
+    CreateWindowW(L"Static", L"Please Connect Your WebCam", WS_VISIBLE | WS_CHILD, 300, 50, 300, 50, hWnd,0,0,0);//text
+    CreateWindowW(L"Button", L"Run", WS_VISIBLE | WS_CHILD, 370, 150, 40, 30, hWnd,(HMENU) RUN,0,0);
+}
+
+//check webcam connection
+void ConnectWebcam() {
+    cv::VideoCapture capture(0);//opencv
+    if (capture.isOpened()){
+        isConn = true;//webcam opened
+    }
+    
+}
+//keyboard input 
+void PressKey(WORD wVk) {
+    INPUT inputs[2] = {};
+
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = wVk;
+
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = wVk;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    SendInput(2, inputs, sizeof(INPUT));
+}
+
+void StartStreamTest() {
+    cv::Mat frame;
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
+    cv::VideoCapture capture(0);
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
+    //start clock
+    auto last = std::chrono::high_resolution_clock::now();
+    //infinite loop stream
+    while(true){
+        capture >> frame;
+        if (frame.empty()) {
+            break;
+        }
+        
+        //fps
+        auto current_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = current_time - last; //frame time
+        last = current_time; //replace last with curr
+        double elapsed_seconds = std::max(elapsed.count(), 1e-4);
+        double fps = 1.0 / elapsed_seconds; //convert to fps
+        std::string fps_txt = std::to_string(static_cast<int>(fps));
+        cv::putText(frame, fps_txt, cv::Point(50, 50), 
+            cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(250,250,250), 1);//put text
+        //gray scale
+        cv::Mat grayFrame, grayObj;
+        cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
+        // Template matching
+        cv::Mat result;
+        cv::matchTemplate(grayFrame, grayObj, result, cv::TM_CCOEFF_NORMED);
+        double minVal, maxVal;
+        cv::Point minLoc, maxLoc;
+        cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+        // rectangle
+        if (maxVal > 0.5) {
+            cv::rectangle(frame,
+                          maxLoc,
+                          cv::Point(maxLoc.x + obj.cols, maxLoc.y + obj.rows),
+                          cv::Scalar(0, 255, 0),
+                          2);
+            cv::putText(frame, "jump", cv::Point(10, 45),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                        cv::Scalar(0, 255, 0), 2);
+        }
+        cv::imshow("Live Stream Test", frame);
+        char key = (char)cv::waitKey(10);
+        if (key == 27 || key == 'q' || key == 'Q') {
+            capture.release();
+            cv::destroyAllWindows();
+            break;
+        }
+    }
+}
+void Run(){ //run no imshow
+    cv::Mat frame;
+    cv::Mat obj = cv::imread("C:/Users/ziyad/OneDrive/Desktop/projects/ctrl/data/open.png");
+    if (obj.empty())
+        return;
+    cv::VideoCapture capture(0);
+    if (!capture.isOpened())
+        return;
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, 200);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 200);
+    cv::Mat grayObj;
+    cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
+    auto lastPress = std::chrono::steady_clock::now();
+    run = true;
+    while (run){
+        capture >> frame;
+        if (frame.empty())
+            continue;
+        cv::Mat grayFrame;
+        cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+        cv::Mat result;
+        cv::matchTemplate(grayFrame, grayObj, result, cv::TM_CCOEFF_NORMED);
+        double minVal, maxVal;
+        cv::Point minLoc, maxLoc;
+        cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+        if (maxVal > 0.5)
+        {
+            auto now = std::chrono::steady_clock::now();
+            //no spam
+            if (now - lastPress > std::chrono::milliseconds(300))
+            {
+                PressKey(VK_SPACE);
+                lastPress = now;
+            }
+        }
+    }
+    capture.release();
 }
