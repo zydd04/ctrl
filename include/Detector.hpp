@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <opencv2/opencv.hpp>
 #include "Capture.hpp"
-#include "InputController.hpp"
+#include "Input.hpp"
 
 //Detects actual hand gestures from the Webcam capture and translates them into key press values
 

@@ -3,7 +3,7 @@
 #include <string>
 #include "Capture.hpp"
 #include "Detector.hpp"
-#include "InputController.hpp"
+#include "Input.hpp"
 
 //Creates the main window of the app
 class MainWindow {
