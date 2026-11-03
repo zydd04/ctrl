@@ -1,18 +1,22 @@
-#include <chrono>
-#include "Input.hpp"
+#pragma once
 
-Input::Input() {
-}
+struct _XDisplay;
+using Key = unsigned long;
 
-void Input::PressKey(WORD vk) {
-    INPUT input[2] = {};
-    input[0].type = INPUT_KEYBOARD;
-    input[0].ki.wVk = vk;
-    input[0].ki.dwFlags = 0;
-    input[1].type = INPUT_KEYBOARD;
-	input[1].ki.wVk = vk;
-	input[1].ki.dwFlags = KEYEVENTF_KEYUP;
+class Input {
+public:
+	Input();
+	~Input();
 
-	SendInput(2, input, sizeof(INPUT));
-}
+	Input(const Input&) = delete;
+	Input& operator=(const Input&) = delete;
 
+	// True if the X display was opened successfully
+	bool IsReady() const;
+
+	// Press and release key
+	void PressKey(Key keysym);
+
+private:
+	_XDisplay* display;
+};
