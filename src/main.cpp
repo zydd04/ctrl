@@ -35,7 +35,7 @@ int main() {
 
 	// template image path -> key to press
 	std::unordered_map<std::string, Key> gestureToKey = {
-		{"img.png", XK_space}
+		{"/home/ziyad/Desktop/projects/ctrl/img.png", XK_space}
 	};
 	Detector detector(gestureToKey, THRESHOLD);
 
