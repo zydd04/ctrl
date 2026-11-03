@@ -1,22 +1,36 @@
-#pragma once
+#include "Input.hpp"
 
-struct _XDisplay;
-using Key = unsigned long;
+#include <iostream>
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <X11/extensions/XTest.h>
 
-class Input {
-public:
-	Input();
-	~Input();
+Input::Input() {
+	display = XOpenDisplay(nullptr);
+	if (!display) {
+		std::cerr << "Input: cannot open X display (is DISPLAY set?)\n";
+	}
+}
 
-	Input(const Input&) = delete;
-	Input& operator=(const Input&) = delete;
+Input::~Input() {
+	if (display) {
+		XCloseDisplay(display);
+	}
+}
 
-	// True if the X display was opened successfully
-	bool IsReady() const;
+bool Input::IsReady() const {
+	return display != nullptr;
+}
 
-	// Press and release key
-	void PressKey(Key keysym);
-
-private:
-	_XDisplay* display;
-};
+void Input::PressKey(Key keysym) {
+	if (!display || keysym == 0) {
+		return;
+	}
+	KeyCode keycode = XKeysymToKeycode(display, static_cast<KeySym>(keysym));
+	if (keycode == 0) {
+		return; 
+	}
+	XTestFakeKeyEvent(display, keycode, True, 0);  // key down
+	XTestFakeKeyEvent(display, keycode, False, 0); // key up
+	XFlush(display);
+}

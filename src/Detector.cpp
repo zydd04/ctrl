@@ -1,26 +1,41 @@
 #include "Detector.hpp"
+#include <iostream>
 
-//Constructor
-Detector::Detector(std::unordered_map<std::string, WORD> gTk, double td) {
-    gestureToKey = gTk;
-    treshhold = td;
+Detector::Detector(const std::unordered_map<std::string, Key>& gTk, double td)
+	: threshold(td) {
+	for (const auto& [path, key] : gTk) {
+		cv::Mat img = cv::imread(path);
+		if (img.empty()) {
+			std::cerr << "Detector: could not load template '" << path << "'\n";
+			continue;
+		}
+		cv::Mat gray;
+		cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+		gestures.push_back({path, gray, key});
+	}
 }
 
-//Detects hand gesture in the frame and returns a key to be pressed
-WORD Detector::Detect(cv::Mat& frame) {
-    std::string PathImg; // = gestureToKey[JUMP] example 
-    cv::Mat obj = cv::imread(PathImg);
-    cv::Mat grayObj;
-    cv::cvtColor(obj, grayObj, cv::COLOR_BGR2GRAY);
-    cv::Mat grayFrame;
-    cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
-    cv::Mat result;
-    cv::matchTemplate(grayFrame, grayObj, result, cv::TM_CCOEFF_NORMED);
-    double minVal, maxVal;
-    cv::Point minLoc, maxLoc;
-    cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
-    if (maxVal > treshhold) {
-        return gestureToKey[PathImg]; //NEEDS IMPLEMENTATION : ALLOW MULTIPLE GESTURES DETECTION
-    }
-    return 0;
+Key Detector::Detect(const cv::Mat& frame) {
+	if (frame.empty() || gestures.empty()) {
+		return 0;
+	}
+
+	cv::Mat grayFrame;
+	cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+
+	for (const auto& g : gestures) {
+		// matchTemplate requires the template to fit inside the frame
+		if (g.grayTemplate.cols > grayFrame.cols || g.grayTemplate.rows > grayFrame.rows) {
+			continue;
+		}
+		cv::Mat result;
+		cv::matchTemplate(grayFrame, g.grayTemplate, result, cv::TM_CCOEFF_NORMED);
+		double minVal, maxVal;
+		cv::Point minLoc, maxLoc;
+		cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+		if (maxVal > threshold) {
+			return g.key;
+		}
+	}
+	return 0;
 }

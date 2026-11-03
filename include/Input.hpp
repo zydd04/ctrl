@@ -1,13 +1,23 @@
 #pragma once
-#include <unordered_map>
-#include <chrono>
 
-//Sends virtual key presses to the OS
- 
+struct _XDisplay;
+
+// Same type as X11's KeySym (e.g. XK_space from <X11/keysym.h>)
+using Key = unsigned long;
+
 class Input {
 public:
-	explicit Input(); 
+	Input();
 
-	//Press and release key 
-	void PressKey(WORD vk);
+	Input(const Input&) = delete;
+	Input& operator=(const Input&) = delete;
+
+	// True if the X display was opened successfully
+	bool IsReady() const;
+
+	// Press and release key
+	void PressKey(Key keysym);
+
+private:
+	_XDisplay* display;
 };
