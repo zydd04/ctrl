@@ -40,11 +40,12 @@ int main() {
 	};
 	Detector detector(gestureToKey, THRESHOLD);
 	FingerDetector fingerDetector;
+	if (!fingerDetector.IsReady()) {
+		return 1;
+	}
 
 	const std::string CAMERA_WINDOW = "ctrl - camera";
-	const std::string MASK_WINDOW = "ctrl - skin mask";
 	cv::namedWindow(CAMERA_WINDOW, cv::WINDOW_AUTOSIZE);
-	cv::namedWindow(MASK_WINDOW, cv::WINDOW_AUTOSIZE);
 
 	auto lastPress = std::chrono::steady_clock::now();
 	while (running) {
@@ -68,11 +69,12 @@ int main() {
 			}
 		}
 
-		FingerDetector::Draw(mirrored, hand);
-		cv::imshow(CAMERA_WINDOW, mirrored);
-		if (!hand.mask.empty()) {
-			cv::imshow(MASK_WINDOW, hand.mask);
-		}
+		cv::Mat display = mirrored.clone();
+		FingerDetector::Draw(display, hand);
+
+		cv::putText(display, "q: quit", cv::Point(10, display.rows - 12),
+		            cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 165, 255), 1);
+		cv::imshow(CAMERA_WINDOW, display);
 
 		int k = cv::waitKey(1) & 0xFF; // also pumps the GUI event loop
 		if (k == 'q' || k == 27) {     // q or Esc quits
