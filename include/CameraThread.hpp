@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QImage>
 #include <QString>
 #include <QThread>
@@ -14,6 +16,9 @@ class CameraThread : public QThread {
 public:
 	~CameraThread();
 
+	// While paused the camera still shows, but the hand controls nothing
+	void TogglePause();
+
 signals:
 	// A new camera picture, with the hand drawn on it
 	void FrameReady(const QImage& image);
@@ -23,4 +28,7 @@ signals:
 
 protected:
 	void run() override;
+
+private:
+	std::atomic<bool> paused{false}; // set by the window, read by run()
 };

@@ -30,7 +30,6 @@ endforeach()
 add_executable(${PROJECT_NAME}
     src/main.cpp
     src/Input.cpp
-    src/Capture.cpp
     src/FingerDetector.cpp
     src/CameraThread.cpp
     src/MouseController.cpp

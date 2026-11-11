@@ -1,20 +1,17 @@
 #pragma once
-#include <memory>
 
-struct _XDisplay;
+struct _XDisplay; // the X11 display, so this header doesn't need the X11 ones
 
 using Key = unsigned long; // X11 keysym
-
-struct DisplayCloser {
-    void operator()(_XDisplay* d) const;
-};
 
 // Sends fake keyboard and mouse events to the X server
 
 class Input {
 public:
     Input();
+    ~Input();
 
+    // False if the X display could not be opened. Check it before the rest.
     bool IsReady() const;
 
     void PressKey(Key keysym);
@@ -25,5 +22,5 @@ public:
     void MouseUp();
 
 private:
-    std::unique_ptr<_XDisplay, DisplayCloser> display;
+    _XDisplay* display;
 };

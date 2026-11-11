@@ -1,7 +1,6 @@
 #include "MouseController.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 // How close thumb and index must be to click, compared to the palm size.
 // It has to open wider than it closed, so the click doesn't flicker.
@@ -10,10 +9,10 @@ const float PINCH_OPEN = 0.40f;
 
 // How fast the cursor follows the finger (0..1).
 // Smaller = smoother but slower, bigger = faster but shakier.
-const float FOLLOW_SPEED = 0.35f;
+const float FOLLOW_SPEED = 0.10f;
 
 static float Distance(cv::Point2f a, cv::Point2f b) {
-	return std::hypot(a.x - b.x, a.y - b.y);
+	return cv::norm(a - b);
 }
 
 MouseController::MouseController(Input& input) : input(input) {}
@@ -24,7 +23,7 @@ bool MouseController::IsActive() const {
 
 cv::Rect2f MouseController::ScreenArea() {
 	// x, y, width, height
-	return cv::Rect2f(0.20f, 0.12f, 0.60f, 0.55f);
+	return cv::Rect2f(0.10f, 0.08f, 0.80f, 0.70f);
 }
 
 void MouseController::Stop() {
@@ -49,12 +48,7 @@ void MouseController::Update(const HandInfo& hand, cv::Size frameSize) {
 	// Are thumb and index touching?
 	float palmSize = std::max(1.0f, Distance(wrist, middleBase));
 	float pinch = Distance(thumbTip, indexTip) / palmSize;
-	bool pinched;
-	if (pressed) {
-		pinched = pinch < PINCH_OPEN;
-	} else {
-		pinched = pinch < PINCH_CLOSE;
-	}
+	bool pinched = pinch < (pressed ? PINCH_OPEN : PINCH_CLOSE);
 
 	// Pointing = index raised, and middle, ring and pinky closed.
 	// A pinch also counts, because pinching can bend the index finger.

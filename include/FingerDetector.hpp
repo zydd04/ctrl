@@ -46,8 +46,8 @@ private:
 	std::vector<cv::Point2f> anchors; // grid positions the palm model works with
 	bool ready = false;
 
-	// The palm points of the last frame. While we still see the hand we reuse
-	// them, so the palm model only runs when the hand is lost.
-	bool hasLastPalm = false;
+	// The palm points of the last frame (empty if there was no hand). While we
+	// still see the hand we reuse them, so the palm model only runs when the
+	// hand is lost.
 	std::vector<cv::Point2f> lastPalm;
 };

@@ -8,6 +8,11 @@ Control your computer with your hand, using only a webcam.
 | Touch thumb and index together | Click (keep them together to drag) |
 | Open hand (5 fingers) | Press space |
 
+| Key (while the ctrl window is focused) | Action |
+| --- | --- |
+| `P` | Pause / resume the hand control |
+| `Q` | Quit |
+
 A C++ Qt desktop app. Hand tracking uses the MediaPipe hand models, run with OpenCV.
 
 `Tech: C++, OpenCV, Qt, MediaPipe`
@@ -73,8 +78,7 @@ A window opens and shows the camera. Your hand is drawn on the picture when it i
 | File | What it does |
 | --- | --- |
 | `src/main.cpp` | Opens the window |
-| `src/CameraThread.cpp` | The main loop: camera, hand, mouse, space |
-| `src/Capture.cpp` | Reads the webcam |
+| `src/CameraThread.cpp` | The main loop: webcam, hand, mouse, space |
 | `src/FingerDetector.cpp` | Finds the hand and counts the fingers |
 | `src/MouseController.cpp` | Turns the hand into mouse moves and clicks |
 | `src/Input.cpp` | Sends the mouse and keyboard events |

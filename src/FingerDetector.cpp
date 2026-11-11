@@ -1,7 +1,7 @@
 #include "FingerDetector.hpp"
 
+#include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <string>
 
 const int PALM_SIZE = 192; // the palm model wants a 192x192 image
@@ -12,7 +12,7 @@ const float HAND_MIN_SCORE = 0.7f;
 
 // Distance between two points
 static float Distance(cv::Point2f a, cv::Point2f b) {
-	return std::hypot(a.x - b.x, a.y - b.y);
+	return cv::norm(a - b);
 }
 
 // Both models want the image as RGB numbers between 0 and 1
@@ -31,23 +31,19 @@ FingerDetector::FingerDetector() {
 		palmNet = cv::dnn::readNet(folder + "/palm_detection_mediapipe_2023feb.onnx");
 		handNet = cv::dnn::readNet(folder + "/handpose_estimation_mediapipe_2023feb.onnx");
 		ready = true;
-	} catch (const cv::Exception& e) {
-		std::cerr << "FingerDetector: could not load the models from " << folder << "\n";
+	} catch (const cv::Exception&) {
+		// ready stays false
 	}
 
 	// The palm model gives its answers relative to a fixed list of grid points:
 	// a 24x24 grid with 2 points per cell, then a 12x12 grid with 6 per cell
-	for (int y = 0; y < 24; y++) {
-		for (int x = 0; x < 24; x++) {
-			for (int i = 0; i < 2; i++) {
-				anchors.push_back(cv::Point2f((x + 0.5f) / 24, (y + 0.5f) / 24));
-			}
-		}
-	}
-	for (int y = 0; y < 12; y++) {
-		for (int x = 0; x < 12; x++) {
-			for (int i = 0; i < 6; i++) {
-				anchors.push_back(cv::Point2f((x + 0.5f) / 12, (y + 0.5f) / 12));
+	const int grids[2][2] = {{24, 2}, {12, 6}}; // grid size, points per cell
+	for (auto& [size, perCell] : grids) {
+		for (int y = 0; y < size; y++) {
+			for (int x = 0; x < size; x++) {
+				for (int i = 0; i < perCell; i++) {
+					anchors.push_back(cv::Point2f((x + 0.5f) / size, (y + 0.5f) / size));
+				}
 			}
 		}
 	}
@@ -78,15 +74,12 @@ bool FingerDetector::FindPalm(const cv::Mat& frame, std::vector<cv::Point2f>& pa
 	// It has two outputs: 18 numbers per grid point (box + 7 palm points),
 	// and 1 score per grid point
 	cv::Mat points, scores;
-	for (int i = 0; i < (int)outputs.size(); i++) {
-		if (outputs[i].size[outputs[i].dims - 1] == 18) {
-			points = outputs[i];
+	for (const cv::Mat& output : outputs) {
+		if (output.size[output.dims - 1] == 18) {
+			points = output;
 		} else {
-			scores = outputs[i];
+			scores = output;
 		}
-	}
-	if (points.empty() || scores.total() != anchors.size()) {
-		return false;
 	}
 
 	// Take the grid point with the best score
@@ -168,24 +161,17 @@ bool FingerDetector::FindLandmarks(const cv::Mat& frame, const std::vector<cv::P
 	std::vector<cv::Mat> outputs;
 	handNet.setInput(MakeInput(square));
 	handNet.forward(outputs, handNet.getUnconnectedOutLayersNames());
-	if (outputs.size() < 2 || outputs[0].total() != 63) {
-		return false;
-	}
-	float handScore = outputs[1].ptr<float>()[0];
-	if (handScore < HAND_MIN_SCORE) {
+	if (outputs[1].ptr<float>()[0] < HAND_MIN_SCORE) {
 		return false;
 	}
 
 	// Move the 21 points from the square back to frame pixels
 	const float* p = outputs[0].ptr<float>();
-	hand.landmarks.clear();
+	std::vector<cv::Point2f> points;
 	for (int i = 0; i < 21; i++) {
-		float x = p[i * 3];
-		float y = p[i * 3 + 1];
-		float frameX = toFrame.at<float>(0, 0) * x + toFrame.at<float>(0, 1) * y + toFrame.at<float>(0, 2);
-		float frameY = toFrame.at<float>(1, 0) * x + toFrame.at<float>(1, 1) * y + toFrame.at<float>(1, 2);
-		hand.landmarks.push_back(cv::Point2f(frameX, frameY));
+		points.push_back(cv::Point2f(p[i * 3], p[i * 3 + 1]));
 	}
+	cv::transform(points, hand.landmarks, toFrame);
 	hand.found = true;
 	return true;
 }
@@ -209,40 +195,29 @@ void FingerDetector::CountFingers(HandInfo& hand) {
 		                        Distance(p[tip], wrist) > Distance(p[base], wrist);
 	}
 
-	hand.fingerCount = 0;
-	for (int finger = 0; finger < 5; finger++) {
-		if (hand.fingerUp[finger]) {
-			hand.fingerCount++;
-		}
-	}
+	hand.fingerCount = std::count(hand.fingerUp.begin(), hand.fingerUp.end(), true);
 }
 
 HandInfo FingerDetector::Detect(const cv::Mat& frame) {
 	HandInfo hand;
-	if (!ready || frame.empty()) {
-		return hand;
-	}
 
-	// First try where the hand was in the last frame (faster and steadier)
-	bool found = hasLastPalm && FindLandmarks(frame, lastPalm, hand);
-
-	// Otherwise search the whole frame for a palm
+	// First try where the hand was in the last frame (faster and steadier),
+	// otherwise search the whole frame for a palm
+	bool found = !lastPalm.empty() && FindLandmarks(frame, lastPalm, hand);
 	if (!found) {
 		std::vector<cv::Point2f> palm;
 		found = FindPalm(frame, palm) && FindLandmarks(frame, palm, hand);
 	}
 
-	hasLastPalm = found;
+	lastPalm.clear();
 	if (!found) {
 		return hand;
 	}
 
 	// Remember the palm for the next frame. These 7 hand points are the same
 	// 7 points the palm model gives.
-	int palmPoints[7] = {0, 5, 9, 13, 17, 1, 2};
-	lastPalm.clear();
-	for (int i = 0; i < 7; i++) {
-		lastPalm.push_back(hand.landmarks[palmPoints[i]]);
+	for (int i : {0, 5, 9, 13, 17, 1, 2}) {
+		lastPalm.push_back(hand.landmarks[i]);
 	}
 
 	CountFingers(hand);
