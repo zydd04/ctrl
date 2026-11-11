@@ -1,67 +1,53 @@
 #pragma once
 
 #include <array>
-#include <string>
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
 
-// Detects a hand and counts the raised fingers with MediaPipe's hand models
-// (palm detection + 21-point hand landmarks), run through OpenCV DNN.
+// Finds a hand in a camera frame and tells which fingers are raised.
+// Uses the two MediaPipe hand models:
+//   1. the palm model finds where the hand is
+//   2. the landmark model finds 21 points on the hand
 //
-// Pipeline, same as MediaPipe Hands:
-//   1. the palm detector finds the hand and its orientation in the full frame
-//   2. the hand is cropped upright and the landmark model predicts 21 keypoints
-//   3. while the hand stays visible, the next crop is derived from the previous
-//      landmarks, so the palm detector only runs when the hand is lost
-//
-// Landmark indices: 0 wrist, 1-4 thumb, 5-8 index, 9-12 middle, 13-16 ring,
-// 17-20 pinky (each finger listed from its base to its tip).
+// The 21 points: 0 = wrist, 1-4 = thumb, 5-8 = index, 9-12 = middle,
+// 13-16 = ring, 17-20 = pinky. The last point of each finger is its tip.
 
 struct HandInfo {
 	bool found = false;
-	int fingerCount = 0;
-	float confidence = 0.f;                 // hand presence score from the landmark model
-	std::vector<cv::Point2f> landmarks;     // 21 keypoints in frame coordinates
-	std::array<bool, 5> fingerUp{};         // thumb, index, middle, ring, pinky
-	std::vector<cv::Point> fingertips;      // tips of the raised fingers
-	cv::Rect box;                           // bounding box of the landmarks
+	int fingerCount = 0;                 // how many fingers are raised
+	std::array<bool, 5> fingerUp{};      // thumb, index, middle, ring, pinky
+	std::vector<cv::Point2f> landmarks;  // the 21 points, in frame pixels
 };
 
 class FingerDetector {
 public:
-	// modelDir must contain palm_detection_mediapipe_2023feb.onnx and
-	// handpose_estimation_mediapipe_2023feb.onnx (CMake downloads them into model/)
-	explicit FingerDetector(const std::string& modelDir = CTRL_MODEL_DIR,
-	                        float palmScoreThreshold = 0.5f,
-	                        float handScoreThreshold = 0.7f);
+	FingerDetector();
 
-	bool IsReady() const { return ready; }
+	// False if the model files could not be loaded
+	bool IsReady() const;
 
 	HandInfo Detect(const cv::Mat& frame);
 
-	// Draws the hand skeleton, raised fingertips and finger count onto frame
+	// Draws the hand and the finger count on the frame
 	static void Draw(cv::Mat& frame, const HandInfo& hand);
 
 private:
-	// The 7 points the hand crop is derived from: wrist, the 4 finger bases and
-	// 2 thumb joints. Comes from the palm detector or from the previous landmarks.
-	using PalmPoints = std::array<cv::Point2f, 7>;
+	// Finds 7 points on the palm. Returns false if there is no hand.
+	bool FindPalm(const cv::Mat& frame, std::vector<cv::Point2f>& palm);
 
-	bool DetectPalm(const cv::Mat& frame, PalmPoints& palm);
-	bool EstimateLandmarks(const cv::Mat& frame, const PalmPoints& palm, HandInfo& hand);
-	static void CountFingers(HandInfo& hand);
+	// Finds the 21 hand points, starting from the 7 palm points
+	bool FindLandmarks(const cv::Mat& frame, const std::vector<cv::Point2f>& palm, HandInfo& hand);
+
+	void CountFingers(HandInfo& hand);
 
 	cv::dnn::Net palmNet;
 	cv::dnn::Net handNet;
-	std::vector<std::string> palmOutputs;
-	std::vector<std::string> handOutputs;
-	std::vector<cv::Point2f> anchors; // palm detector anchor centers, normalized
+	std::vector<cv::Point2f> anchors; // grid positions the palm model works with
 	bool ready = false;
 
-	float palmThreshold;
-	float handThreshold;
-
-	bool tracking = false; // previous frame had a hand, reuse its landmarks
-	PalmPoints lastPalm;
+	// The palm points of the last frame. While we still see the hand we reuse
+	// them, so the palm model only runs when the hand is lost.
+	bool hasLastPalm = false;
+	std::vector<cv::Point2f> lastPalm;
 };

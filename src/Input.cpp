@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <X11/Xlib.h>
-#include <X11/keysym.h>
 #include <X11/extensions/XTest.h>
 
 void DisplayCloser::operator()(_XDisplay* d) const {
@@ -21,7 +20,7 @@ bool Input::IsReady() const {
 }
 
 void Input::PressKey(Key keysym) {
-    if (!display || keysym == 0) {
+    if (!display) {
         return;
     }
     KeyCode keycode = XKeysymToKeycode(display.get(), static_cast<KeySym>(keysym));
@@ -33,7 +32,27 @@ void Input::PressKey(Key keysym) {
     XFlush(display.get());
 }
 
-std::string Input::KeyName(Key keysym) {
-    const char* name = XKeysymToString(static_cast<KeySym>(keysym));
-    return name ? name : "key " + std::to_string(keysym);
+void Input::MoveMouse(float x, float y) {
+    if (!display) {
+        return;
+    }
+    int screen = DefaultScreen(display.get());
+    int px = static_cast<int>(x * (DisplayWidth(display.get(), screen) - 1));
+    int py = static_cast<int>(y * (DisplayHeight(display.get(), screen) - 1));
+    XTestFakeMotionEvent(display.get(), screen, px, py, 0);
+    XFlush(display.get());
+}
+
+void Input::MouseDown() {
+    if (display) {
+        XTestFakeButtonEvent(display.get(), Button1, True, 0);
+        XFlush(display.get());
+    }
+}
+
+void Input::MouseUp() {
+    if (display) {
+        XTestFakeButtonEvent(display.get(), Button1, False, 0);
+        XFlush(display.get());
+    }
 }

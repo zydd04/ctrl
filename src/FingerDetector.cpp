@@ -1,214 +1,218 @@
 #include "FingerDetector.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <string>
 
-namespace {
+const int PALM_SIZE = 192; // the palm model wants a 192x192 image
+const int HAND_SIZE = 224; // the landmark model wants a 224x224 image
 
-const int PALM_INPUT = 192; // palm detector input is 192x192
-const int HAND_INPUT = 224; // landmark model input is 224x224
-const int NUM_LANDMARKS = 21;
+const float PALM_MIN_SCORE = 0.5f;
+const float HAND_MIN_SCORE = 0.7f;
 
-// Hand landmark indices matching the palm detector's 7 keypoints
-const int PALM_LANDMARK_IDS[7] = {0, 5, 9, 13, 17, 1, 2};
-
-// How the upright hand crop is built around the palm points
-const float CROP_SHIFT_UP = 0.4f; // move the crop towards the fingers
-const float CROP_ENLARGE = 3.0f;  // palm box -> whole hand
-
-const int SKELETON[][2] = {
-	{0, 1}, {1, 2}, {2, 3}, {3, 4},         // thumb
-	{0, 5}, {5, 6}, {6, 7}, {7, 8},         // index
-	{9, 10}, {10, 11}, {11, 12},            // middle
-	{13, 14}, {14, 15}, {15, 16},           // ring
-	{0, 17}, {17, 18}, {18, 19}, {19, 20},  // pinky
-	{5, 9}, {9, 13}, {13, 17},              // palm
-};
-
-float Distance(const cv::Point2f& a, const cv::Point2f& b) {
+// Distance between two points
+static float Distance(cv::Point2f a, cv::Point2f b) {
 	return std::hypot(a.x - b.x, a.y - b.y);
 }
 
-// Both models take RGB float images in NHWC layout, values 0..1
-cv::Mat ToBlob(const cv::Mat& bgr) {
-	cv::Mat rgb, f;
-	cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
-	rgb.convertTo(f, CV_32F, 1.0 / 255.0);
-	int dims[4] = {1, f.rows, f.cols, 3};
-	return cv::Mat(4, dims, CV_32F, f.data).clone();
+// Both models want the image as RGB numbers between 0 and 1
+static cv::Mat MakeInput(const cv::Mat& image) {
+	cv::Mat rgb;
+	cv::cvtColor(image, rgb, cv::COLOR_BGR2RGB);
+	rgb.convertTo(rgb, CV_32F, 1.0 / 255.0);
+
+	int shape[4] = {1, rgb.rows, rgb.cols, 3};
+	return cv::Mat(4, shape, CV_32F, rgb.data).clone();
 }
 
-// SSD anchors of the MediaPipe palm detector: a 24x24 grid with 2 anchors per
-// cell followed by a 12x12 grid with 6 anchors per cell (2016 in total)
-std::vector<cv::Point2f> MakeAnchors() {
-	std::vector<cv::Point2f> anchors;
-	const int grids[2] = {24, 12};
-	const int perCell[2] = {2, 6};
-	for (int g = 0; g < 2; ++g) {
-		for (int y = 0; y < grids[g]; ++y) {
-			for (int x = 0; x < grids[g]; ++x) {
-				for (int n = 0; n < perCell[g]; ++n) {
-					anchors.emplace_back((x + 0.5f) / grids[g], (y + 0.5f) / grids[g]);
-				}
+FingerDetector::FingerDetector() {
+	std::string folder = CTRL_MODEL_DIR;
+	try {
+		palmNet = cv::dnn::readNet(folder + "/palm_detection_mediapipe_2023feb.onnx");
+		handNet = cv::dnn::readNet(folder + "/handpose_estimation_mediapipe_2023feb.onnx");
+		ready = true;
+	} catch (const cv::Exception& e) {
+		std::cerr << "FingerDetector: could not load the models from " << folder << "\n";
+	}
+
+	// The palm model gives its answers relative to a fixed list of grid points:
+	// a 24x24 grid with 2 points per cell, then a 12x12 grid with 6 per cell
+	for (int y = 0; y < 24; y++) {
+		for (int x = 0; x < 24; x++) {
+			for (int i = 0; i < 2; i++) {
+				anchors.push_back(cv::Point2f((x + 0.5f) / 24, (y + 0.5f) / 24));
 			}
 		}
 	}
-	return anchors;
-}
-
-} // namespace
-
-FingerDetector::FingerDetector(const std::string& modelDir, float palmScoreThreshold,
-                               float handScoreThreshold)
-	: palmThreshold(palmScoreThreshold), handThreshold(handScoreThreshold) {
-	try {
-		palmNet = cv::dnn::readNet(modelDir + "/palm_detection_mediapipe_2023feb.onnx");
-		handNet = cv::dnn::readNet(modelDir + "/handpose_estimation_mediapipe_2023feb.onnx");
-		palmOutputs = palmNet.getUnconnectedOutLayersNames();
-		handOutputs = handNet.getUnconnectedOutLayersNames();
-		anchors = MakeAnchors();
-		ready = true;
-	} catch (const cv::Exception& e) {
-		std::cerr << "FingerDetector: could not load the MediaPipe hand models from '"
-		          << modelDir << "' (re-run cmake to download them)\n" << e.what() << "\n";
+	for (int y = 0; y < 12; y++) {
+		for (int x = 0; x < 12; x++) {
+			for (int i = 0; i < 6; i++) {
+				anchors.push_back(cv::Point2f((x + 0.5f) / 12, (y + 0.5f) / 12));
+			}
+		}
 	}
 }
 
-bool FingerDetector::DetectPalm(const cv::Mat& frame, PalmPoints& palm) {
-	// Letterbox the frame into the square network input
-	float ratio = std::min(float(PALM_INPUT) / frame.cols, float(PALM_INPUT) / frame.rows);
-	cv::Size scaled(cvRound(frame.cols * ratio), cvRound(frame.rows * ratio));
-	int padX = (PALM_INPUT - scaled.width) / 2;
-	int padY = (PALM_INPUT - scaled.height) / 2;
-	cv::Mat input = cv::Mat::zeros(PALM_INPUT, PALM_INPUT, frame.type());
-	cv::resize(frame, input(cv::Rect(padX, padY, scaled.width, scaled.height)), scaled);
+bool FingerDetector::IsReady() const {
+	return ready;
+}
 
-	palmNet.setInput(ToBlob(input));
-	std::vector<cv::Mat> outs;
-	palmNet.forward(outs, palmOutputs);
+bool FingerDetector::FindPalm(const cv::Mat& frame, std::vector<cv::Point2f>& palm) {
+	// Shrink the frame to fit in a 192x192 square, with black bars around it
+	float scale = std::min((float)PALM_SIZE / frame.cols, (float)PALM_SIZE / frame.rows);
+	int width = cvRound(frame.cols * scale);
+	int height = cvRound(frame.rows * scale);
+	int left = (PALM_SIZE - width) / 2;
+	int top = (PALM_SIZE - height) / 2;
 
-	// One output holds box + keypoint offsets (N x 18), the other raw scores (N x 1)
-	const cv::Mat* deltas = nullptr;
-	const cv::Mat* scores = nullptr;
-	for (const auto& o : outs) {
-		(o.size[o.dims - 1] == 18 ? deltas : scores) = &o;
+	cv::Mat square = cv::Mat::zeros(PALM_SIZE, PALM_SIZE, frame.type());
+	cv::Mat small;
+	cv::resize(frame, small, cv::Size(width, height));
+	small.copyTo(square(cv::Rect(left, top, width, height)));
+
+	// Run the model
+	std::vector<cv::Mat> outputs;
+	palmNet.setInput(MakeInput(square));
+	palmNet.forward(outputs, palmNet.getUnconnectedOutLayersNames());
+
+	// It has two outputs: 18 numbers per grid point (box + 7 palm points),
+	// and 1 score per grid point
+	cv::Mat points, scores;
+	for (int i = 0; i < (int)outputs.size(); i++) {
+		if (outputs[i].size[outputs[i].dims - 1] == 18) {
+			points = outputs[i];
+		} else {
+			scores = outputs[i];
+		}
 	}
-	if (!deltas || !scores || scores->total() != anchors.size()) {
+	if (points.empty() || scores.total() != anchors.size()) {
 		return false;
 	}
 
-	// Only one hand is needed, so just take the highest scoring anchor
-	const float* s = scores->ptr<float>();
-	int best = static_cast<int>(std::max_element(s, s + anchors.size()) - s);
-	float score = 1.f / (1.f + std::exp(-s[best]));
-	if (score < palmThreshold) {
+	// Take the grid point with the best score
+	const float* score = scores.ptr<float>();
+	int best = 0;
+	for (int i = 1; i < (int)anchors.size(); i++) {
+		if (score[i] > score[best]) {
+			best = i;
+		}
+	}
+	float bestScore = 1 / (1 + std::exp(-score[best])); // turn it into 0..1
+	if (bestScore < PALM_MIN_SCORE) {
 		return false;
 	}
 
-	// Keypoints are offsets from the anchor in input pixels; map back to the frame
-	const float* d = deltas->ptr<float>() + best * 18;
-	for (int i = 0; i < 7; ++i) {
-		float x = d[4 + 2 * i] + anchors[best].x * PALM_INPUT;
-		float y = d[5 + 2 * i] + anchors[best].y * PALM_INPUT;
-		palm[i] = cv::Point2f((x - padX) / ratio, (y - padY) / ratio);
+	// Read its 7 palm points and move them back to frame pixels
+	const float* p = points.ptr<float>() + best * 18;
+	palm.clear();
+	for (int i = 0; i < 7; i++) {
+		float x = p[4 + i * 2] + anchors[best].x * PALM_SIZE;
+		float y = p[5 + i * 2] + anchors[best].y * PALM_SIZE;
+		palm.push_back(cv::Point2f((x - left) / scale, (y - top) / scale));
 	}
 	return true;
 }
 
-bool FingerDetector::EstimateLandmarks(const cv::Mat& frame, const PalmPoints& palm,
-                                       HandInfo& hand) {
-	// Hand axes in the frame: `down` points from the middle finger base to the
-	// wrist, `right` is perpendicular to it. Cropping along them makes the hand upright.
+bool FingerDetector::FindLandmarks(const cv::Mat& frame, const std::vector<cv::Point2f>& palm,
+                                   HandInfo& hand) {
+	// The landmark model wants a square picture of the hand with the fingers
+	// pointing up. So we work out which way the hand points:
+	// palm[0] is the wrist and palm[2] is the base of the middle finger.
 	cv::Point2f up = palm[2] - palm[0];
-	float len = std::hypot(up.x, up.y);
-	if (len < 1.f) {
+	float length = std::hypot(up.x, up.y);
+	if (length < 1) {
 		return false;
 	}
-	up *= 1.f / len;
+	up = up / length;
 	cv::Point2f down = -up;
 	cv::Point2f right(-up.y, up.x);
 
-	// Bounding box of the palm points in hand axes
-	float minA = 1e9f, maxA = -1e9f, minB = 1e9f, maxB = -1e9f;
-	for (const auto& p : palm) {
-		float a = p.dot(right), b = p.dot(down);
-		minA = std::min(minA, a); maxA = std::max(maxA, a);
-		minB = std::min(minB, b); maxB = std::max(maxB, b);
+	// Measure the palm along those two directions
+	float minRight = 1e9f, maxRight = -1e9f;
+	float minDown = 1e9f, maxDown = -1e9f;
+	for (int i = 0; i < 7; i++) {
+		float r = palm[i].dot(right);
+		float d = palm[i].dot(down);
+		minRight = std::min(minRight, r);
+		maxRight = std::max(maxRight, r);
+		minDown = std::min(minDown, d);
+		maxDown = std::max(maxDown, d);
 	}
-	float w = maxA - minA, h = maxB - minB;
-	float side = CROP_ENLARGE * std::max(w, h);
-	if (side < 20.f) {
+	float palmWidth = maxRight - minRight;
+	float palmHeight = maxDown - minDown;
+
+	// The square is 3 times the palm, moved a bit towards the fingers,
+	// so the whole hand fits in it
+	float side = 3 * std::max(palmWidth, palmHeight);
+	if (side < 20) {
 		return false;
 	}
-	float ca = (minA + maxA) / 2;
-	float cb = (minB + maxB) / 2 - CROP_SHIFT_UP * h;
-	cv::Point2f center = ca * right + cb * down;
+	float centerRight = (minRight + maxRight) / 2;
+	float centerDown = (minDown + maxDown) / 2 - 0.4f * palmHeight;
+	cv::Point2f center = centerRight * right + centerDown * down;
 
-	// Affine transform from crop pixels to frame pixels
-	float s = side / HAND_INPUT;
-	float half = HAND_INPUT / 2.f;
-	cv::Matx23f cropToFrame(
+	// Matrix that turns a pixel of the square into a pixel of the frame
+	float s = side / HAND_SIZE; // frame pixels per square pixel
+	float half = HAND_SIZE / 2.0f;
+	cv::Mat toFrame = (cv::Mat_<float>(2, 3) <<
 		right.x * s, down.x * s, center.x - half * s * (right.x + down.x),
 		right.y * s, down.y * s, center.y - half * s * (right.y + down.y));
 
-	cv::Mat crop;
-	cv::warpAffine(frame, crop, cropToFrame, cv::Size(HAND_INPUT, HAND_INPUT),
-	               cv::INTER_LINEAR | cv::WARP_INVERSE_MAP, cv::BORDER_CONSTANT);
+	// Cut the square out of the frame
+	cv::Mat square;
+	cv::warpAffine(frame, square, toFrame, cv::Size(HAND_SIZE, HAND_SIZE),
+	               cv::INTER_LINEAR | cv::WARP_INVERSE_MAP);
 
-	handNet.setInput(ToBlob(crop));
-	std::vector<cv::Mat> outs;
-	handNet.forward(outs, handOutputs);
-	// Outputs: landmarks (63), hand presence (1), handedness (1), world landmarks (63)
-	if (outs.size() < 2 || outs[0].total() != NUM_LANDMARKS * 3 || outs[1].total() != 1) {
+	// Run the model. Output 0 is the 21 points (x, y, z each),
+	// output 1 is how sure it is that this is a hand.
+	std::vector<cv::Mat> outputs;
+	handNet.setInput(MakeInput(square));
+	handNet.forward(outputs, handNet.getUnconnectedOutLayersNames());
+	if (outputs.size() < 2 || outputs[0].total() != 63) {
+		return false;
+	}
+	float handScore = outputs[1].ptr<float>()[0];
+	if (handScore < HAND_MIN_SCORE) {
 		return false;
 	}
 
-	hand.confidence = outs[1].ptr<float>()[0];
-	if (hand.confidence < handThreshold) {
-		return false;
-	}
-
-	const float* lm = outs[0].ptr<float>(); // x, y, z per landmark, in crop pixels
-	hand.landmarks.resize(NUM_LANDMARKS);
-	for (int i = 0; i < NUM_LANDMARKS; ++i) {
-		float x = lm[3 * i], y = lm[3 * i + 1];
-		hand.landmarks[i] = cv::Point2f(
-			cropToFrame(0, 0) * x + cropToFrame(0, 1) * y + cropToFrame(0, 2),
-			cropToFrame(1, 0) * x + cropToFrame(1, 1) * y + cropToFrame(1, 2));
-	}
-	hand.box = cv::boundingRect(hand.landmarks);
-
-	// A tracked crop can drift off the hand onto nothing; drop it if it left the frame
-	if ((hand.box & cv::Rect(0, 0, frame.cols, frame.rows)).area() < hand.box.area() / 2) {
-		return false;
+	// Move the 21 points from the square back to frame pixels
+	const float* p = outputs[0].ptr<float>();
+	hand.landmarks.clear();
+	for (int i = 0; i < 21; i++) {
+		float x = p[i * 3];
+		float y = p[i * 3 + 1];
+		float frameX = toFrame.at<float>(0, 0) * x + toFrame.at<float>(0, 1) * y + toFrame.at<float>(0, 2);
+		float frameY = toFrame.at<float>(1, 0) * x + toFrame.at<float>(1, 1) * y + toFrame.at<float>(1, 2);
+		hand.landmarks.push_back(cv::Point2f(frameX, frameY));
 	}
 	hand.found = true;
 	return true;
 }
 
 void FingerDetector::CountFingers(HandInfo& hand) {
-	const auto& p = hand.landmarks;
-	const cv::Point2f& wrist = p[0];
+	const std::vector<cv::Point2f>& p = hand.landmarks;
+	cv::Point2f wrist = p[0];
 
-	// Thumb: when raised the tip moves away from the palm, when folded it tucks
-	// in towards the pinky/index bases
+	// Thumb: it is raised when its tip (4) is farther from the index base (5)
+	// and the pinky base (17) than its middle joint (3) is
 	hand.fingerUp[0] = Distance(p[4], p[17]) > Distance(p[3], p[17]) &&
 	                   Distance(p[4], p[5]) > Distance(p[3], p[5]);
 
-	// Other fingers: a raised finger has its tip farther from the wrist than its
-	// middle joint; a curled one brings the tip back. Works at any hand rotation.
-	for (int f = 1; f < 5; ++f) {
-		int mcp = 4 * f + 1, pip = mcp + 1, tip = mcp + 3;
-		float tipDist = Distance(p[tip], wrist);
-		hand.fingerUp[f] = tipDist > Distance(p[pip], wrist) &&
-		                   tipDist > Distance(p[mcp], wrist);
+	// Other fingers: raised when the tip is farther from the wrist than the
+	// two lower joints. A curled finger brings its tip back to the palm.
+	for (int finger = 1; finger < 5; finger++) {
+		int base = finger * 4 + 1;
+		int middle = base + 1;
+		int tip = base + 3;
+		hand.fingerUp[finger] = Distance(p[tip], wrist) > Distance(p[middle], wrist) &&
+		                        Distance(p[tip], wrist) > Distance(p[base], wrist);
 	}
 
-	for (int f = 0; f < 5; ++f) {
-		if (hand.fingerUp[f]) {
-			++hand.fingerCount;
-			hand.fingertips.emplace_back(p[4 * f + 4]);
+	hand.fingerCount = 0;
+	for (int finger = 0; finger < 5; finger++) {
+		if (hand.fingerUp[finger]) {
+			hand.fingerCount++;
 		}
 	}
 }
@@ -219,23 +223,27 @@ HandInfo FingerDetector::Detect(const cv::Mat& frame) {
 		return hand;
 	}
 
-	// Follow the hand from the previous frame; fall back to the palm detector
-	// when there was none or the landmark model no longer sees a hand there
-	bool ok = tracking && EstimateLandmarks(frame, lastPalm, hand);
-	if (!ok) {
-		hand = HandInfo();
-		PalmPoints palm;
-		ok = DetectPalm(frame, palm) && EstimateLandmarks(frame, palm, hand);
-	}
-	if (!ok) {
-		tracking = false;
-		return HandInfo();
+	// First try where the hand was in the last frame (faster and steadier)
+	bool found = hasLastPalm && FindLandmarks(frame, lastPalm, hand);
+
+	// Otherwise search the whole frame for a palm
+	if (!found) {
+		std::vector<cv::Point2f> palm;
+		found = FindPalm(frame, palm) && FindLandmarks(frame, palm, hand);
 	}
 
-	for (int i = 0; i < 7; ++i) {
-		lastPalm[i] = hand.landmarks[PALM_LANDMARK_IDS[i]];
+	hasLastPalm = found;
+	if (!found) {
+		return hand;
 	}
-	tracking = true;
+
+	// Remember the palm for the next frame. These 7 hand points are the same
+	// 7 points the palm model gives.
+	int palmPoints[7] = {0, 5, 9, 13, 17, 1, 2};
+	lastPalm.clear();
+	for (int i = 0; i < 7; i++) {
+		lastPalm.push_back(hand.landmarks[palmPoints[i]]);
+	}
 
 	CountFingers(hand);
 	return hand;
@@ -248,17 +256,30 @@ void FingerDetector::Draw(cv::Mat& frame, const HandInfo& hand) {
 		return;
 	}
 
-	for (const auto& bone : SKELETON) {
-		cv::line(frame, hand.landmarks[bone[0]], hand.landmarks[bone[1]],
-		         cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+	// Lines of the hand: pairs of points to connect
+	const int lines[21][2] = {
+		{0, 1}, {1, 2}, {2, 3}, {3, 4},         // thumb
+		{0, 5}, {5, 6}, {6, 7}, {7, 8},         // index
+		{9, 10}, {10, 11}, {11, 12},            // middle
+		{13, 14}, {14, 15}, {15, 16},           // ring
+		{0, 17}, {17, 18}, {18, 19}, {19, 20},  // pinky
+		{5, 9}, {9, 13}, {13, 17},              // palm
+	};
+	for (int i = 0; i < 21; i++) {
+		cv::line(frame, hand.landmarks[lines[i][0]], hand.landmarks[lines[i][1]],
+		         cv::Scalar(0, 255, 0), 2);
 	}
-	for (const auto& p : hand.landmarks) {
-		cv::circle(frame, p, 4, cv::Scalar(255, 0, 0), cv::FILLED, cv::LINE_AA);
+
+	// A dot on every point
+	for (int i = 0; i < 21; i++) {
+		cv::circle(frame, hand.landmarks[i], 4, cv::Scalar(255, 0, 0), cv::FILLED);
 	}
-	for (size_t i = 0; i < hand.fingertips.size(); ++i) {
-		cv::circle(frame, hand.fingertips[i], 9, cv::Scalar(0, 255, 255), cv::FILLED, cv::LINE_AA);
-		cv::putText(frame, std::to_string(i + 1), hand.fingertips[i] + cv::Point(10, -10),
-		            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+
+	// A bigger yellow dot on the tip of every raised finger
+	for (int finger = 0; finger < 5; finger++) {
+		if (hand.fingerUp[finger]) {
+			cv::circle(frame, hand.landmarks[finger * 4 + 4], 9, cv::Scalar(0, 255, 255), cv::FILLED);
+		}
 	}
 
 	cv::putText(frame, "Fingers: " + std::to_string(hand.fingerCount), cv::Point(10, 30),

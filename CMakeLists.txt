@@ -30,14 +30,12 @@ endforeach()
 add_executable(${PROJECT_NAME}
     src/main.cpp
     src/Input.cpp
-    src/Detector.cpp
     src/Capture.cpp
     src/FingerDetector.cpp
     src/CameraThread.cpp
-    src/MainWindow.cpp
-    # headers with Q_OBJECT are listed so AUTOMOC finds them in include/
+    src/MouseController.cpp
+    # header with Q_OBJECT, listed so AUTOMOC finds it in include/
     include/CameraThread.hpp
-    include/MainWindow.hpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE include ${OpenCV_INCLUDE_DIRS})
