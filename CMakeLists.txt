@@ -12,6 +12,7 @@ add_executable(${PROJECT_NAME}
     src/Input.cpp
     src/Detector.cpp
     src/Capture.cpp
+    src/FingerDetector.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE include ${OpenCV_INCLUDE_DIRS})

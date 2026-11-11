@@ -9,6 +9,7 @@
 
 #include "Capture.hpp"
 #include "Detector.hpp"
+#include "FingerDetector.hpp"
 #include "Input.hpp"
 
 const double THRESHOLD = 0.5;
@@ -38,6 +39,12 @@ int main() {
 		{"/home/ziyad/Desktop/projects/ctrl/img.png", XK_space}
 	};
 	Detector detector(gestureToKey, THRESHOLD);
+	FingerDetector fingerDetector;
+
+	const std::string CAMERA_WINDOW = "ctrl - camera";
+	const std::string MASK_WINDOW = "ctrl - skin mask";
+	cv::namedWindow(CAMERA_WINDOW, cv::WINDOW_AUTOSIZE);
+	cv::namedWindow(MASK_WINDOW, cv::WINDOW_AUTOSIZE);
 
 	auto lastPress = std::chrono::steady_clock::now();
 	while (running) {
@@ -45,6 +52,12 @@ int main() {
 		if (frame.empty()) {
 			continue;
 		}
+
+		// Mirrored copy for finger detection/display so it feels natural;
+		// the template detector keeps using the original frame
+		cv::Mat mirrored;
+		cv::flip(frame, mirrored, 1);
+		HandInfo hand = fingerDetector.Detect(mirrored);
 
 		Key key = detector.Detect(frame);
 		if (key != 0) {
@@ -54,6 +67,18 @@ int main() {
 				lastPress = now;
 			}
 		}
+
+		FingerDetector::Draw(mirrored, hand);
+		cv::imshow(CAMERA_WINDOW, mirrored);
+		if (!hand.mask.empty()) {
+			cv::imshow(MASK_WINDOW, hand.mask);
+		}
+
+		int k = cv::waitKey(1) & 0xFF; // also pumps the GUI event loop
+		if (k == 'q' || k == 27) {     // q or Esc quits
+			running = false;
+		}
 	}
+	cv::destroyAllWindows();
 	return 0;
 }
