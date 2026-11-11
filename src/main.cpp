@@ -1,19 +1,14 @@
 #include <opencv2/opencv.hpp>
 #include <X11/keysym.h>   // XK_space etc. (include AFTER OpenCV)
 #include <atomic>
-#include <chrono>
 #include <csignal>
 #include <iostream>
 #include <string>
-#include <unordered_map>
 
 #include "Capture.hpp"
 #include "Detector.hpp"
 #include "FingerDetector.hpp"
 #include "Input.hpp"
-
-const double THRESHOLD = 0.5;
-const auto PRESS_COOLDOWN = std::chrono::milliseconds(300); // no spam
 
 static std::atomic<bool> running{true};
 
@@ -34,11 +29,10 @@ int main() {
 		return 1;
 	}
 
-	// template image path -> key to press
-	std::unordered_map<std::string, Key> gestureToKey = {
-		{"/home/ziyad/Desktop/projects/ctrl/img.png", XK_space}
-	};
-	Detector detector(gestureToKey, THRESHOLD);
+	// Example bindings until they come from the UI
+	Detector detector;
+	detector.BindCount(5, XK_space);                                  // open hand
+	detector.BindFingers({false, true, true, false, false}, XK_Right); // index + middle
 	FingerDetector fingerDetector;
 	if (!fingerDetector.IsReady()) {
 		return 1;
@@ -47,26 +41,20 @@ int main() {
 	const std::string CAMERA_WINDOW = "ctrl - camera";
 	cv::namedWindow(CAMERA_WINDOW, cv::WINDOW_AUTOSIZE);
 
-	auto lastPress = std::chrono::steady_clock::now();
 	while (running) {
 		cv::Mat frame = capture.GetFrame();
 		if (frame.empty()) {
 			continue;
 		}
 
-		// Mirrored copy for finger detection/display so it feels natural;
-		// the template detector keeps using the original frame
+		// Mirrored so the display feels natural
 		cv::Mat mirrored;
 		cv::flip(frame, mirrored, 1);
 		HandInfo hand = fingerDetector.Detect(mirrored);
 
-		Key key = detector.Detect(frame);
+		Key key = detector.Detect(hand);
 		if (key != 0) {
-			auto now = std::chrono::steady_clock::now();
-			if (now - lastPress > PRESS_COOLDOWN) {
-				input.PressKey(key);
-				lastPress = now;
-			}
+			input.PressKey(key);
 		}
 
 		cv::Mat display = mirrored.clone();
