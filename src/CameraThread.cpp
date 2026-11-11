@@ -4,11 +4,11 @@
 #include "Input.hpp"
 #include "MouseController.hpp"
 
-const Key SPACE_KEY = 0x20;  // X11 code of the space bar
-const int SPACE_FRAMES = 5;  // how many frames the open hand must be shown
+const Key SPACE_KEY = 0x20; // X11 space bar
+const int SPACE_FRAMES = 5; // frames of open hand before space
 
 CameraThread::~CameraThread() {
-	// Ask the loop in run() to stop and wait for it
+	// Stop the loop in run()
 	requestInterruption();
 	wait();
 }
@@ -18,7 +18,7 @@ void CameraThread::TogglePause() {
 }
 
 void CameraThread::run() {
-	cv::VideoCapture capture(0, cv::CAP_V4L2); // Linux webcam (/dev/video0)
+	cv::VideoCapture capture(0, cv::CAP_V4L2); // /dev/video0
 	if (!capture.isOpened()) {
 		emit Failed("Webcam not found (/dev/video0).");
 		return;
@@ -39,7 +39,7 @@ void CameraThread::run() {
 	}
 
 	MouseController mouse(input);
-	int openHandFrames = 0; // how many frames in a row we saw 5 fingers
+	int openHandFrames = 0;
 
 	cv::Mat frame;
 	while (!isInterruptionRequested()) {
@@ -48,11 +48,10 @@ void CameraThread::run() {
 			continue;
 		}
 
-		// Flip it like a mirror, so moving the hand right moves the cursor right
+		// Mirror the picture
 		cv::flip(frame, frame, 1);
 
 		if (paused) {
-			// Let go of the mouse and only show the picture
 			mouse.Stop();
 			openHandFrames = 0;
 			cv::putText(frame, "PAUSED (P to resume)", cv::Point(20, 40),
@@ -60,10 +59,10 @@ void CameraThread::run() {
 		} else {
 			HandInfo hand = fingerDetector.Detect(frame);
 
-			// Pointing finger moves the mouse
+			// Mouse
 			mouse.Update(hand, frame.size());
 
-			// Open hand presses space, once each time it is shown
+			// Space, once per open hand
 			if (hand.found && hand.fingerCount == 5) {
 				openHandFrames++;
 			} else {
@@ -73,8 +72,7 @@ void CameraThread::run() {
 				input.PressKey(SPACE_KEY);
 			}
 
-			// Draw the hand, and a box around the part of the picture used as
-			// the screen (yellow while pointing)
+			// Draw the hand and the screen area (yellow while pointing)
 			FingerDetector::Draw(frame, hand);
 			cv::Rect2f area = MouseController::ScreenArea();
 			cv::Rect box(area.x * frame.cols, area.y * frame.rows,
@@ -83,12 +81,11 @@ void CameraThread::run() {
 			cv::rectangle(frame, box, color, 2);
 		}
 
-		// Send the picture to the window. copy() is needed because
-		// `frame` is reused for the next picture.
+		// copy() because frame is reused
 		QImage image(frame.data, frame.cols, frame.rows, frame.step, QImage::Format_BGR888);
 		emit FrameReady(image.copy());
 	}
 
-	// Don't leave the mouse button pressed when we stop
+	// Release the mouse button
 	mouse.Stop();
 }
