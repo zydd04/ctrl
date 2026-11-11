@@ -32,3 +32,8 @@ void Input::PressKey(Key keysym) {
     XTestFakeKeyEvent(display.get(), keycode, False, 0);
     XFlush(display.get());
 }
+
+std::string Input::KeyName(Key keysym) {
+    const char* name = XKeysymToString(static_cast<KeySym>(keysym));
+    return name ? name : "key " + std::to_string(keysym);
+}

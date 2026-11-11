@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(OpenCV REQUIRED)
 find_package(X11 REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+
+set(CMAKE_AUTOMOC ON) # generates the Qt signal/slot code for Q_OBJECT classes
 
 # MediaPipe hand models (ONNX exports from the OpenCV model zoo), fetched once
 set(MODEL_DIR ${CMAKE_SOURCE_DIR}/model)
@@ -30,8 +33,13 @@ add_executable(${PROJECT_NAME}
     src/Detector.cpp
     src/Capture.cpp
     src/FingerDetector.cpp
+    src/CameraThread.cpp
+    src/MainWindow.cpp
+    # headers with Q_OBJECT are listed so AUTOMOC finds them in include/
+    include/CameraThread.hpp
+    include/MainWindow.hpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE include ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS} X11::X11 X11::Xtst)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS} X11::X11 X11::Xtst Qt6::Widgets)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CTRL_MODEL_DIR="${MODEL_DIR}")
