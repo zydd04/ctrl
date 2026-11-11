@@ -1,8 +1,13 @@
 #pragma once
 
+#include <atomic>
 #include <opencv2/opencv.hpp>
 #include "FingerDetector.hpp"
 #include "Input.hpp"
+
+// Settings, changed by the sliders in main
+inline std::atomic<float> followSpeed{0.10f};   // cursor speed, smaller = smoother
+inline std::atomic<float> pinchDistance{0.25f}; // thumb to index distance to click, compared to palm size
 
 // Uses the hand as a mouse
 

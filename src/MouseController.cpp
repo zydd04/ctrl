@@ -2,12 +2,8 @@
 
 #include <algorithm>
 
-// Thumb to index distance to click / release, compared to palm size
-const float PINCH_CLOSE = 0.25f;
-const float PINCH_OPEN = 0.40f;
-
-// Cursor follow speed, smaller = smoother
-const float FOLLOW_SPEED = 0.10f;
+// Extra distance to release the click, so it doesn't flicker
+const float PINCH_RELEASE = 0.15f;
 
 static float Distance(cv::Point2f a, cv::Point2f b) {
 	return cv::norm(a - b);
@@ -46,7 +42,7 @@ void MouseController::Update(const HandInfo& hand, cv::Size frameSize) {
 	// Thumb touching index?
 	float palmSize = std::max(1.0f, Distance(wrist, middleBase));
 	float pinch = Distance(thumbTip, indexTip) / palmSize;
-	bool pinched = pinch < (pressed ? PINCH_OPEN : PINCH_CLOSE);
+	bool pinched = pinch < pinchDistance + (pressed ? PINCH_RELEASE : 0);
 
 	// Pointing = index up, others closed (a pinch counts too)
 	bool othersClosed = !hand.fingerUp[2] && !hand.fingerUp[3] && !hand.fingerUp[4];
@@ -69,8 +65,8 @@ void MouseController::Update(const HandInfo& hand, cv::Size frameSize) {
 		cursorY = y;
 		active = true;
 	} else {
-		cursorX += (x - cursorX) * FOLLOW_SPEED;
-		cursorY += (y - cursorY) * FOLLOW_SPEED;
+		cursorX += (x - cursorX) * followSpeed;
+		cursorY += (y - cursorY) * followSpeed;
 	}
 	input.MoveMouse(cursorX, cursorY);
 
