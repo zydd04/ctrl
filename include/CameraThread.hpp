@@ -24,5 +24,5 @@ protected:
 	void run() override;
 
 private:
-	std::atomic<bool> paused{false};
+	std::atomic<bool> paused{true}; // start paused
 };
